@@ -1,0 +1,11 @@
+build/**
+.DS_Store
+.github/
+.vscode/
+.env
+lib60870-C/build
+lib60870-C/CmakeFiles
+lib60870-C/dependencies/**
+build-pqc/**
+.git_disabled/**
+liboqs/**

@@ -206,9 +206,21 @@ typedef enum {
     F_SG_NA_1 = 125,
     F_DR_TA_1 = 126,
     F_SC_NB_1 = 127,
-    S_RP_NA_1 = 136, /* A-profile key exchange */
+    S_RP_NA_1 = 136, /* A-profile key exchange (legacy) */
     S_SP_NA_1 = 137, /* A-profile security statistics */
-    S_SE_NA_1 = 138,  /* A-profile secure ASDU */
+    S_SE_NA_1 = 138, /* A-profile secure ASDU */
+    
+    /* IEC 62351-5:2023 Compliant ASDU Types */
+    S_AR_NA_1 = 140, /* Association Request */
+    S_AS_NA_1 = 141, /* Association Response */
+    S_UK_NA_1 = 142, /* Update Key Change Request */
+    S_UR_NA_1 = 143, /* Update Key Change Response */
+    S_SR_NA_1 = 144, /* Session Request */
+    S_SS_NA_1 = 145, /* Session Response */
+    S_SK_NA_1 = 146, /* Session Key Change Request */
+    S_SQ_NA_1 = 147, /* Session Key Change Response */
+    S_AC_NA_1 = 150, /* Association Confirm */
+    S_AB_NA_1 = 151  /* Association Abort */
 } IEC60870_5_TypeID;
 
 typedef IEC60870_5_TypeID TypeID;

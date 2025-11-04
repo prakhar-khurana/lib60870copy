@@ -19,6 +19,8 @@ set (lib_common_SRCS
 ./iec60870/cs104/cs104_frame.c
 ./iec60870/cs104/cs104_slave.c
 ./iec60870/security/62351-5/aprofile.c
+./iec60870/security/62351-5/aprofile_62351_5.c
+./iec60870/security/62351-5/aprofile_62351_5_handlers.c
 ./iec60870/link_layer/buffer_frame.c
 ./iec60870/link_layer/link_layer.c
 ./iec60870/link_layer/serial_transceiver_ft_1_2.c

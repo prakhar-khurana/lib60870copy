@@ -11,6 +11,12 @@ typedef enum {
     APROFILE_SECURE_DATA
 } AProfileKind;
 
+typedef enum {
+    APROFILE_ALG_ECDH = 1,
+    APROFILE_ALG_KYBER = 2,
+    APROFILE_ALG_CERT = 3   /* Certificate-based authentication */
+} AProfileAlgorithm;
+
 struct sCS101_ASDU;
 struct sT104Frame;
 

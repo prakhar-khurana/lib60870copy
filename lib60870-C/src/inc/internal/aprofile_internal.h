@@ -32,6 +32,11 @@
 
 #include "iec60870_common.h"
 
+#include <openssl/x509.h>
+#include <openssl/evp.h>
+#include <openssl/rsa.h>
+#include <openssl/err.h>
+
 typedef bool (*AProfile_SendAsduCallback)(void* connection, CS101_ASDU asdu);
 
 typedef enum {
@@ -90,6 +95,12 @@ struct sAProfileContext
     uint16_t chunk_association_id; /* Association ID for current reassembly */
     uint8_t chunk_kind;         /* Kind of current reassembly */
     uint8_t chunk_hash_id;      /* Hash ID of current reassembly */
+
+    /* OpenSSL certificate fields */
+    X509* ca_cert;
+    EVP_PKEY* private_key;
+    X509* local_cert;
+    RSA* rsa_private_key;
 
 #ifdef HAVE_LIBOQS
     /* Kyber buffers (sizes per Kyber768 worst-case) */

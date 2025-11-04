@@ -1,4 +1,3 @@
-
 include_directories(
     ./inc/api
     ./inc/internal
@@ -161,6 +160,7 @@ IF(UNIX)
         -lpthread
         -lm
         -lrt
+        ${OPENSSL_LIBRARIES}
     )
 
   configure_file(

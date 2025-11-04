@@ -40,6 +40,9 @@ struct sCS101_ASDU {
     int payloadSize;
 };
 
+#define S_AC_NA_1 150  /* Association Confirm */
+#define S_AB_NA_1 151  /* Association Abort */
+
 #ifdef __cplusplus
 extern "C" {
 #endif

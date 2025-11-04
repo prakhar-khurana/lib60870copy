@@ -60,6 +60,10 @@ if(WIN32)
     endforeach()
 endif()
 
+foreach(example_target ${EXAMPLE_TARGETS})
+    target_link_libraries(${example_target} ${OPENSSL_LIBRARIES})
+endforeach()
+
 if(WITH_MBEDTLS)
     foreach(example_target ${EXAMPLE_TARGETS})
         if (TARGET ${example_target})

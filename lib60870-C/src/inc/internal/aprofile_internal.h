@@ -50,6 +50,18 @@ typedef enum {
     KEY_EXCHANGE_COMPLETE
 } KeyExchangeState;
 
+/* IEC 62351-5:2023 Compliant State Machine */
+typedef enum {
+    APROFILE_STATE_IDLE = 0,
+    APROFILE_STATE_ASSOC_PENDING = 1,
+    APROFILE_STATE_ASSOC_COMPLETE = 2,
+    APROFILE_STATE_UPDATE_KEY_PENDING = 3,
+    APROFILE_STATE_UPDATE_KEY_COMPLETE = 4,
+    APROFILE_STATE_SESSION_PENDING = 5,
+    APROFILE_STATE_SESSION_KEY_PENDING = 6,
+    APROFILE_STATE_ESTABLISHED = 7
+} AProfileState;
+
 /* Placeholder for security state */
 struct sAProfileContext
 {
@@ -74,6 +86,22 @@ struct sAProfileContext
 
     uint8_t localPublicKey[65];
     int localPublicKeyLen;
+
+    /* IEC 62351-5:2023 Two-Level Key Hierarchy */
+    uint8_t encryption_update_key[32];  /* 256-bit Encryption Update Key */
+    uint8_t authentication_update_key[32]; /* 256-bit Authentication Update Key */
+    uint8_t control_session_key[32];    /* 256-bit Control Direction Session Key */
+    uint8_t monitor_session_key[32];    /* 256-bit Monitoring Direction Session Key */
+    
+    /* Random Data for HKDF Salt */
+    uint8_t controlling_station_random[32];
+    uint8_t controlled_station_random[32];
+    
+    /* State Machine */
+    AProfileState state;
+    
+    /* Association ID */
+    uint16_t association_id;
 
     /* Buffer for hybrid key exchange material */
     uint8_t localHybridKey[2048];

@@ -205,8 +205,22 @@ AProfile_create(void* connection, AProfile_SendAsduCallback sendAsduCallback, CS
     self->keyExchangeState = KEY_EXCHANGE_IDLE;
     self->selectedAlgorithm = APROFILE_ALG_ECDH;
     self->security_active = false;
-    self->local_sequence_number = 0;
+    
+    /* IEC 62351-5:2023 Clause 8.5.2.2.4: DSQ starts at 1, not 0 */
+    self->local_sequence_number = 1;
     self->remote_sequence_number = 0;
+    
+    /* Initialize IEC 62351-5:2023 state machine */
+    self->state = APROFILE_STATE_IDLE;
+    self->association_id = 0;
+    
+    /* Clear key material */
+    memset(self->encryption_update_key, 0, sizeof(self->encryption_update_key));
+    memset(self->authentication_update_key, 0, sizeof(self->authentication_update_key));
+    memset(self->control_session_key, 0, sizeof(self->control_session_key));
+    memset(self->monitor_session_key, 0, sizeof(self->monitor_session_key));
+    memset(self->controlling_station_random, 0, sizeof(self->controlling_station_random));
+    memset(self->controlled_station_random, 0, sizeof(self->controlled_station_random));
 
     /* Initialize OpenSSL */
     OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS | OPENSSL_INIT_ADD_ALL_CIPHERS, NULL);

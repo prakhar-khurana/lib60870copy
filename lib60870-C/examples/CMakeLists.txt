@@ -37,6 +37,8 @@ target_link_libraries(tls_client PRIVATE lib60870)
 add_executable(tls_server tls_server/tls_server.c)
 target_link_libraries(tls_server PRIVATE lib60870)
 
+# IEC 62351-5:2023 Demo Applications
+add_subdirectory(iec62351_5_demo)
 
 set(EXAMPLE_TARGETS
     cs101_master_balanced
@@ -52,6 +54,8 @@ set(EXAMPLE_TARGETS
     multi_client_server
     tls_client
     tls_server
+    iec62351_5_demo_server
+    iec62351_5_demo_client
 )
 
 if(WIN32)

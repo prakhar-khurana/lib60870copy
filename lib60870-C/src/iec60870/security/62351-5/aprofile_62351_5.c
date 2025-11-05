@@ -252,7 +252,9 @@ AProfile_verifyMAC(const uint8_t* key, size_t key_len,
 static bool
 AProfile_sendAssociationRequest(AProfileContext self)
 {
-    printf("APROFILE: Sending Association Request (S_AR_NA_1)\n");
+    printf("\n[HANDSHAKE STEP 1/8] Sending Association Request (S_AR_NA_1)\n");
+    printf("[CRYPTO] Generating 32-byte random data\n");
+    printf("[CRYPTO] Generating ECDH key pair (SECP256R1)\n");
     
     /* Generate random data for this station */
     mbedtls_ctr_drbg_random(&self->ctr_drbg, self->controlling_station_random, 32);
@@ -304,6 +306,8 @@ AProfile_sendAssociationRequest(AProfileContext self)
     CS101_ASDU_destroy(asdu);
     
     self->state = APROFILE_STATE_ASSOC_PENDING;
+    printf("[CRYPTO] Sent: ClientRandom (32 bytes) + ECDH Public Key (65 bytes)\n");
+    printf("[STATE] Waiting for Association Response...\n");
     return true;
 }
 
@@ -367,7 +371,8 @@ AProfile_handleAssociationResponse(AProfileContext self, CS101_ASDU asdu)
 static bool
 AProfile_sendUpdateKeyChangeRequest(AProfileContext self)
 {
-    printf("APROFILE: Sending Update Key Change Request (S_UK_NA_1)\n");
+    printf("\n[HANDSHAKE STEP 3/8] Sending Update Key Change Request (S_UK_NA_1)\n");
+    printf("[CRYPTO] Calculating HMAC-SHA256 MAC using Authentication Update Key\n");
     
     /* Create ASDU */
     CS101_ASDU asdu = CS101_ASDU_create(self->parameters, false, CS101_COT_AUTHENTICATION, 0, 0, false, false);
@@ -438,7 +443,8 @@ AProfile_handleUpdateKeyChangeResponse(AProfileContext self, CS101_ASDU asdu)
 static bool
 AProfile_sendSessionRequest(AProfileContext self)
 {
-    printf("APROFILE: Sending Session Request (S_SR_NA_1)\n");
+    printf("\n[HANDSHAKE STEP 5/8] Sending Session Request (S_SR_NA_1)\n");
+    printf("[SESSION] Requesting new session establishment\n");
     
     CS101_ASDU asdu = CS101_ASDU_create(self->parameters, false, CS101_COT_AUTHENTICATION, 0, 0, false, false);
     if (!asdu) return false;
@@ -491,7 +497,13 @@ AProfile_handleSessionResponse(AProfileContext self, CS101_ASDU asdu)
 static bool
 AProfile_sendSessionKeyChangeRequest(AProfileContext self)
 {
-    printf("APROFILE: Sending Session Key Change Request (S_SK_NA_1)\n");
+    printf("\n[HANDSHAKE STEP 7/8] Sending Session Key Change Request (S_SK_NA_1)\n");
+    printf("[CRYPTO] Generating random Session Keys\n");
+    printf("[CRYPTO]   - Control Session Key (256-bit)\n");
+    printf("[CRYPTO]   - Monitor Session Key (256-bit)\n");
+    printf("[CRYPTO] Wrapping Session Keys with AES-256-KW\n");
+    printf("[CRYPTO]   - KEK: Encryption Update Key (256-bit)\n");
+    printf("[CRYPTO] Calculating HMAC-SHA256 MAC\n");
     
     /* Wrap session keys */
     uint8_t wrapped_keys[72];

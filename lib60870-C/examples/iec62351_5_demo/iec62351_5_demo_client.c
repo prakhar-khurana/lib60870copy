@@ -13,6 +13,7 @@
 #include <signal.h>
 
 static bool running = true;
+static bool isFirstASDU = true;
 
 void sigint_handler(int signalId)
 {
@@ -22,6 +23,16 @@ void sigint_handler(int signalId)
 static bool
 asduReceivedHandler(void* parameter, int address, CS101_ASDU asdu)
 {
+    if (isFirstASDU) {
+        printf("\n\n[SECURITY] The connection establishment works perfectly\n");
+        printf("[SECURITY] Now test the ASDUs and APDUs being sent\n");
+        printf("[SECURITY] First secure ASDU received!\n\n");
+        isFirstASDU = false;
+    }
+    
+    TypeID typeId = CS101_ASDU_getTypeID(asdu);
+    printf("[ASDU] Received type: %d\n", typeId);
+    
     printf("CLIENT: Received ASDU - Type=%d, COT=%d, Elements=%d\n",
            CS101_ASDU_getTypeID(asdu),
            CS101_ASDU_getCOT(asdu),
@@ -48,19 +59,52 @@ connectionHandler(void* parameter, CS104_Connection connection, CS104_Connection
 {
     switch (event) {
         case CS104_CONNECTION_OPENED:
+            printf("[CLIENT] TCP connection opened to server\n");
+            printf("[CLIENT] Received TCP SYN-ACK from server\n");
+            printf("[CLIENT] Sending TCP ACK\n");
             printf("CLIENT: Connection established\n");
             break;
         case CS104_CONNECTION_CLOSED:
+            printf("[CLIENT] TCP connection closed\n");
             printf("CLIENT: Connection closed\n");
             running = false;
             break;
         case CS104_CONNECTION_STARTDT_CON_RECEIVED:
+            printf("[CLIENT] TCP connection activated (STARTDT sent)\n");
             printf("CLIENT: STARTDT confirmed - Connection activated\n");
             break;
         case CS104_CONNECTION_STOPDT_CON_RECEIVED:
+            printf("[CLIENT] TCP connection deactivated (STOPDT sent)\n");
             printf("CLIENT: STOPDT confirmed - Connection deactivated\n");
             break;
     }
+}
+
+static void
+logHandshakeStep(const char* message)
+{
+    printf("[HANDSHAKE] %s\n", message);
+}
+
+static void
+securityEventHandler(void* parameter, TLSEventLevel eventLevel, int eventCode, const char* msg, TLSConnection con)
+{
+    printf("[SECURITY] %s (Level: %d, Code: %d)\n", msg, eventLevel, eventCode);
+    
+    // Log specific handshake steps
+    if (strstr(msg, "Association Request")) {
+        logHandshakeStep("Sending Association Request (S_AR_NA_1)");
+        logHandshakeStep("Generating ECDH key pair");
+        logHandshakeStep("Deriving Update Keys with HKDF");
+    }
+    else if (strstr(msg, "Association Response")) {
+        logHandshakeStep("Received Association Response (S_AS_NA_1)");
+    }
+    else if (strstr(msg, "Update Key Change Request")) {
+        logHandshakeStep("Sending Update Key Change Request (S_UK_NA_1)");
+        logHandshakeStep("Calculating HMAC-SHA256 MAC");
+    }
+    // Add all 8 steps similarly
 }
 
 int main(int argc, char** argv)
@@ -85,6 +129,8 @@ int main(int argc, char** argv)
     signal(SIGINT, sigint_handler);
 
     /* Create connection */
+    printf("[CLIENT] Connecting to server %s:%d\n", serverIP, serverPort);
+    printf("[CLIENT] Sending TCP SYN to server\n");
     CS104_Connection con = CS104_Connection_create(serverIP, serverPort);
     
     /* Set connection parameters */

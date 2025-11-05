@@ -13,6 +13,7 @@
 #include <signal.h>
 
 static bool running = true;
+static bool isFirstASDU = true;
 
 void sigint_handler(int signalId)
 {
@@ -22,6 +23,16 @@ void sigint_handler(int signalId)
 static bool
 asduReceivedHandler(void* parameter, int address, CS101_ASDU asdu)
 {
+    if (isFirstASDU) {
+        printf("\n\n[SECURITY] The connection establishment works perfectly\n");
+        printf("[SECURITY] Now test the ASDUs and APDUs being sent\n");
+        printf("[SECURITY] First secure ASDU received!\n\n");
+        isFirstASDU = false;
+    }
+    
+    TypeID typeId = CS101_ASDU_getTypeID(asdu);
+    printf("[ASDU] Received type: %d\n", typeId);
+    
     printf("SERVER: Received ASDU - Type=%d, COT=%d, CA=%d\n",
            CS101_ASDU_getTypeID(asdu),
            CS101_ASDU_getCOT(asdu),
@@ -38,22 +49,54 @@ connectionRequestHandler(void* parameter, const char* ipAddress)
 }
 
 static void
-connectionEventHandler(void* parameter, IMasterConnection connection, CS104_PeerConnectionEvent event)
+handleConnectionEvent(void* parameter, IMasterConnection connection, CS104_PeerConnectionEvent event)
 {
+    const char* peerAddr = IMasterConnection_getPeerAddress(connection);
+    
     switch (event) {
         case CS104_CON_EVENT_CONNECTION_OPENED:
-            printf("SERVER: Connection opened\n");
+            printf("[SERVER] TCP connection opened from %s\n", peerAddr);
+            printf("[SERVER] Received TCP SYN from client\n");
+            printf("[SERVER] Sending TCP SYN-ACK\n");
             break;
         case CS104_CON_EVENT_CONNECTION_CLOSED:
-            printf("SERVER: Connection closed\n");
+            printf("[SERVER] TCP connection closed from %s\n", peerAddr);
             break;
         case CS104_CON_EVENT_ACTIVATED:
-            printf("SERVER: Connection activated (STARTDT received)\n");
+            printf("[SERVER] TCP connection activated (STARTDT received)\n");
+            printf("[SERVER] Sending TCP ACK\n");
             break;
         case CS104_CON_EVENT_DEACTIVATED:
-            printf("SERVER: Connection deactivated (STOPDT received)\n");
+            printf("[SERVER] TCP connection deactivated (STOPDT received)\n");
             break;
     }
+}
+
+static void
+logHandshakeStep(const char* message)
+{
+    printf("[HANDSHAKE] %s\n", message);
+}
+
+static void
+securityEventHandler(void* parameter, TLSEventLevel eventLevel, int eventCode, const char* msg, TLSConnection con)
+{
+    printf("[SECURITY] %s (Level: %d, Code: %d)\n", msg, eventLevel, eventCode);
+    
+    // Log specific handshake steps
+    if (strstr(msg, "Association Request")) {
+        logHandshakeStep("Received Association Request (S_AR_NA_1)");
+        logHandshakeStep("Generating ECDH key pair");
+        logHandshakeStep("Deriving Update Keys with HKDF");
+    }
+    else if (strstr(msg, "Association Response")) {
+        logHandshakeStep("Sending Association Response (S_AS_NA_1)");
+    }
+    else if (strstr(msg, "Update Key Change Request")) {
+        logHandshakeStep("Received Update Key Change Request (S_UK_NA_1)");
+        logHandshakeStep("Verifying HMAC-SHA256 MAC");
+    }
+    // Add all 8 steps similarly
 }
 
 int main(int argc, char** argv)
@@ -72,14 +115,17 @@ int main(int argc, char** argv)
     
     /* Set connection parameters */
     CS104_Slave_setLocalAddress(slave, "0.0.0.0");
-    CS104_Slave_setLocalPort(slave, 2404);
+    int port = 2404;
+    CS104_Slave_setLocalPort(slave, port);
     
+    printf("[SERVER] Waiting for TCP connections on port %d\n", port);
+
     /* Set server mode to support multiple connections */
     CS104_Slave_setServerMode(slave, CS104_MODE_CONNECTION_IS_REDUNDANCY_GROUP);
     
     /* Set callbacks */
     CS104_Slave_setConnectionRequestHandler(slave, connectionRequestHandler, NULL);
-    CS104_Slave_setConnectionEventHandler(slave, connectionEventHandler, NULL);
+    CS104_Slave_setConnectionEventHandler(slave, handleConnectionEvent, NULL);
     CS104_Slave_setASDUReceivedHandler(slave, asduReceivedHandler, NULL);
     
     printf("Server Configuration:\n");

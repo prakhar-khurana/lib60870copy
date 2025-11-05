@@ -32,17 +32,12 @@
 
 #include "iec60870_common.h"
 
-#include <openssl/x509.h>
-#include <openssl/evp.h>
-#include <openssl/rsa.h>
-#include <openssl/err.h>
+#include <mbedtls/x509_crt.h>
+#include <mbedtls/pk.h>
+#include <mbedtls/rsa.h>
+#include <mbedtls/error.h>
 
 typedef bool (*AProfile_SendAsduCallback)(void* connection, CS101_ASDU asdu);
-
-typedef enum {
-    APROFILE_ALG_ECDH = 1,
-    APROFILE_ALG_KYBER = 2
-} AProfileAlgorithm;
 
 typedef enum {
     KEY_EXCHANGE_IDLE,
@@ -124,11 +119,11 @@ struct sAProfileContext
     uint8_t chunk_kind;         /* Kind of current reassembly */
     uint8_t chunk_hash_id;      /* Hash ID of current reassembly */
 
-    /* OpenSSL certificate fields */
-    X509* ca_cert;
-    EVP_PKEY* private_key;
-    X509* local_cert;
-    RSA* rsa_private_key;
+    /* mbedTLS certificate fields */
+    mbedtls_x509_crt ca_cert;
+    mbedtls_pk_context private_key;
+    mbedtls_x509_crt local_cert;
+    mbedtls_rsa_context rsa_private_key;
 
 #ifdef HAVE_LIBOQS
     /* Kyber buffers (sizes per Kyber768 worst-case) */

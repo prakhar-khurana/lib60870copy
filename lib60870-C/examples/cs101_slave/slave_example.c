@@ -12,7 +12,7 @@
 #include <string.h>
 
 #include "cs101_slave.h"
-
+#include "../../src/inc/internal/cs101_asdu_internal.h"
 #include "hal_serial.h"
 #include "hal_thread.h"
 #include "hal_time.h"
@@ -149,6 +149,20 @@ interrogationHandler(void* parameter, IMasterConnection connection, CS101_ASDU a
     return true;
 }
 
+
+static void dumpAsdu(const char* tag, CS101_ASDU asdu)
+{
+    struct sCS101_ASDU* a = (struct sCS101_ASDU*) asdu;
+    printf("[%s] ASDU header (%d bytes):", tag, a->asduHeaderLength);
+    for (int i = 0; i < a->asduHeaderLength; i++) printf(" %02X", a->asdu[i]);
+    printf("\n");
+
+    printf("[%s] ASDU payload (%d bytes):", tag, a->payloadSize);
+    for (int i = 0; i < a->payloadSize; i++) printf(" %02X", a->payload[i]);
+    printf("\n");
+}
+
+
 static bool
 asduHandler(void* parameter, IMasterConnection connection, CS101_ASDU asdu)
 {
@@ -185,12 +199,14 @@ asduHandler(void* parameter, IMasterConnection connection, CS101_ASDU asdu)
         else
             CS101_ASDU_setCOT(asdu, CS101_COT_UNKNOWN_COT);
 
+        dumpAsdu("SERVER->CLIENT", asdu);   
         IMasterConnection_sendASDU(connection, asdu);
 
         return true;
     }
 
     return false;
+    
 }
 
 static void
@@ -222,6 +238,7 @@ linkLayerStateChanged(void* parameter, int address, LinkLayerState state)
         break;
     }
 }
+
 
 int
 main(int argc, char** argv)

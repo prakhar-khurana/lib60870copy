@@ -272,7 +272,6 @@ if(BUILD_TESTS)
     add_executable(tests
         "${CMAKE_SOURCE_DIR}/lib60870-C/tests/all_tests.c"
         "${CMAKE_SOURCE_DIR}/lib60870-C/tests/unity/unity.c"
-        "${CMAKE_SOURCE_DIR}/lib60870-C/tests/test_ap_security.c"
     )
 
     target_include_directories(tests PRIVATE
@@ -287,6 +286,7 @@ if(BUILD_TESTS)
 
     if(WITH_MBEDTLS)
         target_link_libraries(tests PRIVATE mbedtls_static)
+        target_compile_definitions(tests PRIVATE -DCONFIG_CS104_APROFILE=1 -DHAVE_LIBOQS=1)
     endif()
 
     if(WIN32)
@@ -297,8 +297,16 @@ if(BUILD_TESTS)
 
     add_test(NAME all_tests COMMAND tests)
 
-    add_executable(test_ap_security "${CMAKE_SOURCE_DIR}/lib60870-C/tests/test_ap_security.c")
+    add_executable(test_ap_security "${CMAKE_SOURCE_DIR}/lib60870-C/tests/test_ap_security.c" "${CMAKE_SOURCE_DIR}/lib60870-C/tests/unity/unity.c")
     target_link_libraries(test_ap_security lib60870)
+    target_include_directories(test_ap_security PRIVATE
+        "${CMAKE_SOURCE_DIR}/lib60870-C/tests/unity"
+        "${CMAKE_SOURCE_DIR}/lib60870-C/src/inc/internal"
+        "${CMAKE_SOURCE_DIR}/lib60870-C/src/inc/api"
+    )
+    if(WITH_MBEDTLS)
+        target_compile_definitions(test_ap_security PRIVATE -DCONFIG_CS104_APROFILE=1 -DHAVE_LIBOQS=1)
+    endif()
     set(TEST_OUTPUT_DIR ${CMAKE_BINARY_DIR}/lib60870-C/tests)
     file(MAKE_DIRECTORY ${TEST_OUTPUT_DIR})
     set_target_properties(test_ap_security PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${TEST_OUTPUT_DIR})

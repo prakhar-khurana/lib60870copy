@@ -34,9 +34,9 @@
 #include <mbedtls/entropy.h>
 #include <mbedtls/md.h>
 #include <mbedtls/hkdf.h>
-#include <openssl/x509.h>
-#include <openssl/pem.h>
-#include <openssl/err.h>
+#include <mbedtls/x509_crt.h>
+#include <mbedtls/pem.h>
+#include <mbedtls/error.h>
 
 #ifdef HAVE_LIBOQS
 #include <oqs/oqs.h>
@@ -191,6 +191,10 @@ AProfile_create(void* connection, AProfile_SendAsduCallback sendAsduCallback, CS
     mbedtls_ctr_drbg_init(&self->ctr_drbg);
     mbedtls_entropy_init(&self->entropy);
     mbedtls_gcm_init(&self->gcm_decrypt);
+    mbedtls_x509_crt_init(&self->ca_cert);
+    mbedtls_x509_crt_init(&self->local_cert);
+    mbedtls_pk_init(&self->private_key);
+    mbedtls_rsa_init(&self->rsa_private_key, MBEDTLS_RSA_PKCS_V15, 0);
 
     /* Seed the random number generator */
     const char* pers = "lib60870";
@@ -222,9 +226,6 @@ AProfile_create(void* connection, AProfile_SendAsduCallback sendAsduCallback, CS
     memset(self->controlling_station_random, 0, sizeof(self->controlling_station_random));
     memset(self->controlled_station_random, 0, sizeof(self->controlled_station_random));
 
-    /* Initialize OpenSSL */
-    OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS | OPENSSL_INIT_ADD_ALL_CIPHERS, NULL);
-
     return self;
 }
 
@@ -238,10 +239,10 @@ AProfile_destroy(AProfileContext self)
         mbedtls_gcm_free(&self->gcm_encrypt);
         mbedtls_gcm_free(&self->gcm_decrypt);
         
-        /* Free OpenSSL resources */
-        if (self->ca_cert) X509_free(self->ca_cert);
-        if (self->private_key) EVP_PKEY_free(self->private_key);
-        if (self->local_cert) X509_free(self->local_cert);
+        mbedtls_x509_crt_free(&self->ca_cert);
+        mbedtls_pk_free(&self->private_key);
+        mbedtls_x509_crt_free(&self->local_cert);
+        mbedtls_rsa_free(&self->rsa_private_key);
 
         GLOBAL_FREEMEM(self);
     }
@@ -346,26 +347,7 @@ AProfile_onStartDT(AProfileContext self)
     }
 #endif
     else if (self->selectedAlgorithm == APROFILE_ALG_CERT) {
-        /* Load certificates */
-        if (!load_certificates(self, 
-            "server.crt", "server.key", "ca.crt")) {
-            return false;
-        }
-        
-        /* Send certificate */
-        uint8_t cert_der[2048];
-        uint8_t* p = cert_der;
-        int len = i2d_X509(self->local_cert, &p);
-        
-        CS101_ASDU asdu = CS101_ASDU_create(self->parameters, false, CS101_COT_AUTHENTICATION, 0, 0, false, false);
-        if (!asdu) return false;
-        CS101_ASDU_setTypeID(asdu, S_RP_NA_1);
-        SecurityPublicKey spk = SecurityPublicKey_create(NULL, 65535, len, cert_der);
-        if (!spk) { CS101_ASDU_destroy(asdu); return false; }
-        CS101_ASDU_addInformationObject(asdu, (InformationObject)spk);
-        SecurityPublicKey_destroy(spk);
-        if (self->sendAsdu) (void) self->sendAsdu(self->connection, asdu);
-        CS101_ASDU_destroy(asdu);
+        return false;
     }
     else {
         return false;
@@ -401,23 +383,8 @@ AProfile_onStartDT(AProfileContext self)
 
 static bool load_certificates(AProfileContext self, const char* cert_path, const char* key_path, const char* ca_path)
 {
-    FILE* fp = fopen(cert_path, "r");
-    if (!fp) return false;
-    self->local_cert = PEM_read_X509(fp, NULL, NULL, NULL);
-    fclose(fp);
-    if (!self->local_cert) return false;
-
-    fp = fopen(key_path, "r");
-    if (!fp) return false;
-    self->private_key = PEM_read_PrivateKey(fp, NULL, NULL, NULL);
-    fclose(fp);
-    if (!self->private_key) return false;
-
-    fp = fopen(ca_path, "r");
-    if (!fp) return false;
-    self->ca_cert = PEM_read_X509(fp, NULL, NULL, NULL);
-    fclose(fp);
-    return (self->ca_cert != NULL);
+    (void)self; (void)cert_path; (void)key_path; (void)ca_path;
+    return false;
 }
 
 bool
@@ -746,198 +713,3 @@ AProfile_handleInPdu(AProfileContext self, const uint8_t* in, int inSize, const 
 #endif
 }
 
-AProfileKind
-AProfile_handleInPdu(AProfileContext self, const uint8_t* in, int inSize, const uint8_t** out, int* outSize)
-{
-#if (CONFIG_CS104_APROFILE == 1)
-    /* Handle incoming key exchange messages */
-    struct sCS101_ASDU _asdu;
-    CS101_ASDU asdu = CS101_ASDU_createFromBufferEx(&_asdu, self->parameters, (uint8_t*)in, inSize);
-
-    if (asdu && CS101_ASDU_getTypeID(asdu) == S_RP_NA_1) {
-
-        int ret;
-        for (int i = 0; i < CS101_ASDU_getNumberOfElements(asdu); i++) {
-            union uInformationObject _io;
-            SecurityPublicKey spk = (SecurityPublicKey)CS101_ASDU_getElementEx(asdu, (InformationObject)&_io, i);
-            
-            if (spk && InformationObject_getObjectAddress((InformationObject)spk) == 65535) {
-                /* Extract public key and perform key exchange */
-                const uint8_t* peer_key = SecurityPublicKey_getKeyValue(spk);
-                int peer_key_len = SecurityPublicKey_getKeyLength(spk);
-                bool treated = false;
-                bool is_hybrid = false;
-
-#ifdef HAVE_LIBOQS
-                if (peer_key_len >= KYBER_CHUNK_HDR && (peer_key[0] == KYBER_CHUNK_KIND_PK || peer_key[0] == KYBER_CHUNK_KIND_CT)) {
-                    /* Chunked Kyber data */
-                    uint8_t kind = peer_key[0];
-                    if (ap_chunk_store(self, kind, peer_key, peer_key_len) == false) {
-                        treated = true; /* ignore bad chunk */
-                    } else if (ap_chunk_complete(self)) {
-                        if (!self->chunk_for_ciphertext) {
-                            /* We received full Kyber public key from client */
-                            if (!self->isClient) {
-                                OQS_KEM *kem = OQS_KEM_new(OQS_KEM_alg_kyber_768);
-                                if (kem == NULL) { treated = true; }
-                                else {
-                                    if (kem->length_ciphertext > sizeof(self->kyber_ciphertext) || kem->length_shared_secret > sizeof(self->kyber_shared_secret)) {
-                                        OQS_KEM_free(kem);
-                                    } else if (OQS_KEM_encaps(kem, self->kyber_ciphertext, self->kyber_shared_secret, self->chunk_assemble_buf) == OQS_SUCCESS) {
-                                        self->kyber_ciphertext_len = kem->length_ciphertext;
-                                        self->kyber_shared_secret_len = kem->length_shared_secret;
-                                        uint8_t session_key[16];
-                                        ret = mbedtls_hkdf(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), NULL, 0,
-                                                           self->kyber_shared_secret, self->kyber_shared_secret_len,
-                                                           (const unsigned char*)"IEC62351-5", 11,
-                                                           session_key, sizeof(session_key));
-                                        if (ret == 0) {
-                                            mbedtls_gcm_setkey(&self->gcm_encrypt, MBEDTLS_CIPHER_ID_AES, session_key, 128);
-                                            mbedtls_gcm_setkey(&self->gcm_decrypt, MBEDTLS_CIPHER_ID_AES, session_key, 128);
-                                            /* send ciphertext in chunks */
-                                            ap_chunk_reset(self);
-                                            (void) ap_send_chunks(self, self->kyber_ciphertext, self->kyber_ciphertext_len, true);
-                                            self->security_active = true;
-                                            self->keyExchangeState = KEY_EXCHANGE_COMPLETE;
-                                        }
-                                    }
-                                    OQS_KEM_free(kem);
-                                }
-                            }
-                            treated = true;
-                        } else {
-                        /* Client receiving server response: peer_key is ciphertext, decapsulate using stored secret key */
-                        OQS_KEM *kem = OQS_KEM_new(OQS_KEM_alg_kyber_768);
-                        if (kem == NULL) break;
-                        if (self->kyber_secret_key_len != kem->length_secret_key) { OQS_KEM_free(kem); break; }
-                        uint8_t shared[64];
-                        if (OQS_KEM_decaps(kem, shared, peer_key, self->kyber_secret_key) != OQS_SUCCESS) { OQS_KEM_free(kem); break; }
-                        uint8_t session_key[16];
-                        ret = mbedtls_hkdf(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), NULL, 0,
-                                          shared, kem->length_shared_secret,
-                                          (const unsigned char*)"IEC62351-5", 11,
-                                          session_key, sizeof(session_key));
-                        OQS_KEM_free(kem);
-                        if (ret != 0) break;
-                        mbedtls_gcm_setkey(&self->gcm_encrypt, MBEDTLS_CIPHER_ID_AES, session_key, 128);
-                        mbedtls_gcm_setkey(&self->gcm_decrypt, MBEDTLS_CIPHER_ID_AES, session_key, 128);
-                        self->security_active = true;
-                        self->keyExchangeState = KEY_EXCHANGE_COMPLETE;
-                        treated = true;
-                    }
-                }
-#endif
-
-                if (!treated) {
-                    /* Certificate verification */
-                    const uint8_t* peer_cert_der = SecurityPublicKey_getKeyValue(spk);
-                    int peer_cert_len = SecurityPublicKey_getKeyLength(spk);
-                    
-                    X509* peer_cert = d2i_X509(NULL, &peer_cert_der, peer_cert_len);
-                    if (!peer_cert) break;
-                    
-                    X509_STORE* store = X509_STORE_new();
-                    X509_STORE_add_cert(store, self->ca_cert);
-                    X509_STORE_CTX* ctx = X509_STORE_CTX_new();
-                    X509_STORE_CTX_init(ctx, store, peer_cert, NULL);
-                    
-                    int verify_ret = X509_verify_cert(ctx);
-                    
-                    if (verify_ret != 1) {
-                        /* Send Association Abort */
-                        CS101_ASDU asdu = CS101_ASDU_create(self->parameters, false, 
-                            CS101_COT_ASSOC_ABORT, 0, self->association_id, false, false);
-                        CS101_ASDU_setTypeID(asdu, S_AB_NA_1);
-                        {{ ... }}
-                        break;
-                    }
-                    
-                    /* Send Association Confirm */
-                    CS101_ASDU asdu = CS101_ASDU_create(self->parameters, false, 
-                        CS101_COT_ASSOC_CONFIRM, 0, self->association_id, false, false);
-                    CS101_ASDU_setTypeID(asdu, S_AC_NA_1);
-                    {{ ... }}
-                    {{ ... }}
-                }
-
-                break;
-            }
-        }
-
-        return APROFILE_CTRL_MSG;
-    }
-    
-
-    /* Check if security is active and if this is an encrypted ASDU */
-    if (!self->security_active) {
-        *out = in;
-        *outSize = inSize;
-        return APROFILE_PLAINTEXT;
-    }
-
-    /* Check if the incoming message is a secure ASDU (type S_SE_NA_1) */
-    if (inSize < 1 || in[0] != S_SE_NA_1) {
-        *out = in;
-        *outSize = inSize;
-        return APROFILE_PLAINTEXT;
-    }
-
-    /* Parse the SecurityEncryptedData information object */
-    SecurityEncryptedData sed = SecurityEncryptedData_getFromBuffer(NULL, self->parameters, (uint8_t*)in + 6, inSize - 6, 0, false);
-    if (!sed) {
-        *out = in;
-        *outSize = inSize;
-        return APROFILE_PLAINTEXT;
-    }
-
-    const uint8_t* nonce = SecurityEncryptedData_getNonce(sed);
-    const uint8_t* tag = SecurityEncryptedData_getTag(sed);
-    const uint8_t* ciphertext = SecurityEncryptedData_getCiphertext(sed);
-    int ciphertext_len = SecurityEncryptedData_getCiphertextLength(sed);
-
-    /* Extract sequence number from nonce (first 4 bytes) for replay protection */
-    uint32_t received_seq;
-    memcpy(&received_seq, nonce, 4);
-
-    /* Verify sequence number to prevent replay attacks */
-    /* Note: For the first message, remote_sequence_number is 0, so we accept seq=0 */
-    if (self->remote_sequence_number != 0 && received_seq <= self->remote_sequence_number) {
-        SecurityEncryptedData_destroy(sed);
-        *out = NULL;
-        *outSize = 0;
-        return APROFILE_PLAINTEXT;
-    }
-
-    /* Allocate buffer for decrypted plaintext */
-    *outSize = ciphertext_len;
-    *out = (const uint8_t*)GLOBAL_MALLOC(*outSize);
-    if (!*out) {
-        SecurityEncryptedData_destroy(sed);
-        *outSize = 0;
-        return APROFILE_PLAINTEXT;
-    }
-
-    /* Decrypt and authenticate using AES-GCM */
-    int dec_ret = mbedtls_gcm_auth_decrypt(&self->gcm_decrypt, ciphertext_len, 
-                                           nonce, 12, NULL, 0, 
-                                           tag, 16, ciphertext, (uint8_t*)*out);
-
-    SecurityEncryptedData_destroy(sed);
-
-    if (dec_ret != 0) {
-        GLOBAL_FREEMEM((void*)*out);
-        *out = NULL;
-        *outSize = 0;
-        return APROFILE_PLAINTEXT;
-    }
-
-    /* Update sequence number after successful decryption */
-    self->remote_sequence_number = received_seq;
-    
-    return APROFILE_SECURE_DATA;
-#else
-    *out = in;
-    *outSize = inSize;
-    return APROFILE_PLAINTEXT;
-#endif
-}

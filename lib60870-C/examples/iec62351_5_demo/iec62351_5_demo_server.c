@@ -6,11 +6,13 @@
  */
 
 #include "cs104_slave.h"
+#include "cs101_information_objects.h"
 #include "hal_thread.h"
 #include "hal_time.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <string.h>
 
 static bool running = true;
 static bool isFirstASDU = true;
@@ -51,7 +53,8 @@ connectionRequestHandler(void* parameter, const char* ipAddress)
 static void
 handleConnectionEvent(void* parameter, IMasterConnection connection, CS104_PeerConnectionEvent event)
 {
-    const char* peerAddr = IMasterConnection_getPeerAddress(connection);
+    char peerAddr[100];
+    IMasterConnection_getPeerAddress(connection, peerAddr, sizeof(peerAddr));
     
     switch (event) {
         case CS104_CON_EVENT_CONNECTION_OPENED:
@@ -126,7 +129,7 @@ int main(int argc, char** argv)
     /* Set callbacks */
     CS104_Slave_setConnectionRequestHandler(slave, connectionRequestHandler, NULL);
     CS104_Slave_setConnectionEventHandler(slave, handleConnectionEvent, NULL);
-    CS104_Slave_setASDUReceivedHandler(slave, asduReceivedHandler, NULL);
+    CS104_Slave_setASDUHandler(slave, asduReceivedHandler, NULL);
     
     printf("Server Configuration:\n");
     printf("  Address: 0.0.0.0\n");
@@ -158,10 +161,7 @@ int main(int argc, char** argv)
         
         if (CS104_Slave_getOpenConnections(slave) > 0) {
             /* Send a measurement value */
-            struct sInformationObject io;
-            
-            MeasuredValueScaled mv = (MeasuredValueScaled) &io;
-            MeasuredValueScaled_create(mv, 100, counter % 100, IEC60870_QUALITY_GOOD);
+            MeasuredValueScaled mv = MeasuredValueScaled_create(NULL, 100, counter % 100, IEC60870_QUALITY_GOOD);
             
             CS101_ASDU asdu = CS101_ASDU_create(alParams, false, CS101_COT_PERIODIC, 0, 1, false, false);
             CS101_ASDU_setTypeID(asdu, M_ME_NB_1);

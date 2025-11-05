@@ -2063,14 +2063,47 @@ sendASDUInternal(MasterConnection self, CS101_ASDU asdu)
             struct sBufferFrame bufferFrame;
 
             Frame frame = BufferFrame_initialize(&bufferFrame, frameBuffer.msg, IEC60870_5_104_APCI_LENGTH);
+
+            /* Log ASDU before encoding */
+            struct sCS101_ASDU* asduInternal = (struct sCS101_ASDU*) asdu;
+            printf("\n[APDU-TX] ========== Sending ASDU ==========\n");
+            printf("[APDU-TX] ASDU Type: %d, COT: %d, CA: %d\n", 
+                   CS101_ASDU_getTypeID(asdu), CS101_ASDU_getCOT(asdu), CS101_ASDU_getCA(asdu));
+            printf("[APDU-TX] ASDU Header (%d bytes): ", asduInternal->asduHeaderLength);
+            for (int i = 0; i < asduInternal->asduHeaderLength; i++) 
+                printf("%02X ", asduInternal->asdu[i]);
+            printf("\n[APDU-TX] ASDU Payload (%d bytes): ", asduInternal->payloadSize);
+            for (int i = 0; i < asduInternal->payloadSize; i++) 
+                printf("%02X ", asduInternal->payload[i]);
+            printf("\n");
+
             CS101_ASDU_encode(asdu, frame);
+
+            int preSecSize = Frame_getMsgSize(frame);
+            printf("[APDU-TX] APDU before security (%d bytes): ", preSecSize);
+            for (int i = 0; i < preSecSize && i < 260; i++)
+                printf("%02X ", frameBuffer.msg[i]);
+            printf("\n");
 
             #if (CONFIG_CS104_APROFILE == 1)
             if (self->sec && AProfile_ready(self->sec))
+            {
+                printf("[APDU-TX] Applying IEC 62351-5 ALS encryption...\n");
                 AProfile_wrapOutAsdu(self->sec, (T104Frame)frame);
+                printf("[APDU-TX] Encryption applied successfully\n");
+            }
+            else
+            {
+                printf("[APDU-TX] No ALS encryption (session not established)\n");
+            }
             #endif
 
             frameBuffer.msgSize = Frame_getMsgSize(frame);
+            
+            printf("[APDU-TX] Final APDU (%d bytes): ", frameBuffer.msgSize);
+            for (int i = 0; i < frameBuffer.msgSize && i < 260; i++)
+                printf("%02X ", frameBuffer.msg[i]);
+            printf("\n[APDU-TX] =====================================\n\n");
 
             sendASDU(self, frameBuffer.msg, frameBuffer.msgSize, 0, NULL);
 

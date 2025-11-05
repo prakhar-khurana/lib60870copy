@@ -15,6 +15,4 @@ add_executable(cs101_slave
   ${example_SRCS}
 )
 
-target_link_libraries(cs101_slave
-    lib60870
-)
+target_link_libraries(cs101_slave PRIVATE lib60870)

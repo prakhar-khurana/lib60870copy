@@ -1,88 +1,54 @@
+# Add executables
 add_executable(cs101_master_balanced cs101_master_balanced/master_example.c)
-target_link_libraries(cs101_master_balanced PRIVATE lib60870)
-
 add_executable(cs101_master_unbalanced cs101_master_unbalanced/master_example.c)
-target_link_libraries(cs101_master_unbalanced PRIVATE lib60870)
-
 add_executable(cs101_slave cs101_slave/slave_example.c)
-target_link_libraries(cs101_slave PRIVATE lib60870)
-
 add_executable(cs101_slave_files cs101_slave_files/cs101_slave_files.c)
-target_link_libraries(cs101_slave_files PRIVATE lib60870)
-
 add_executable(cs104_client cs104_client/simple_client.c)
-target_link_libraries(cs104_client PRIVATE lib60870)
-
 add_executable(cs104_client_async cs104_client_async/cs104_client_async.c)
-target_link_libraries(cs104_client_async PRIVATE lib60870)
-
 add_executable(cs104_server cs104_server/simple_server.c)
-target_link_libraries(cs104_server PRIVATE lib60870)
-
 add_executable(cs104_server_no_threads cs104_server_no_threads/cs104_server_no_threads.c)
-target_link_libraries(cs104_server_no_threads PRIVATE lib60870)
-
 add_executable(cs104_server_files cs104_server_files/cs104_server_files.c)
-target_link_libraries(cs104_server_files PRIVATE lib60870)
-
 add_executable(cs104_redundancy_server cs104_redundancy_server/cs104_redundancy_server.c)
-target_link_libraries(cs104_redundancy_server PRIVATE lib60870)
-
 add_executable(multi_client_server multi_client_server/multi_client_server.c)
-target_link_libraries(multi_client_server PRIVATE lib60870)
-
 add_executable(tls_client tls_client/tls_client.c)
-target_link_libraries(tls_client PRIVATE lib60870)
-
 add_executable(tls_server tls_server/tls_server.c)
-target_link_libraries(tls_server PRIVATE lib60870)
 
 # IEC 62351-5:2023 Demo Applications
 add_subdirectory(iec62351_5_demo)
 
-set(EXAMPLE_TARGETS
-    cs101_master_balanced
-    cs101_master_unbalanced
-    cs101_slave
-    cs101_slave_files
-    cs104_client
-    cs104_client_async
-    cs104_server
-    cs104_server_no_threads
-    cs104_server_files
-    cs104_redundancy_server
-    multi_client_server
-    tls_client
-    tls_server
-    iec62351_5_demo_server
-    iec62351_5_demo_client
-)
+# Link libraries
+target_link_libraries(cs101_master_balanced PRIVATE lib60870)
+target_link_libraries(cs101_master_unbalanced PRIVATE lib60870)
+target_link_libraries(cs101_slave PRIVATE lib60870)
+target_link_libraries(cs101_slave_files PRIVATE lib60870)
+target_link_libraries(cs104_client PRIVATE lib60870)
+target_link_libraries(cs104_client_async PRIVATE lib60870)
+target_link_libraries(cs104_server PRIVATE lib60870)
+target_link_libraries(cs104_server_no_threads PRIVATE lib60870)
+target_link_libraries(cs104_server_files PRIVATE lib60870)
+target_link_libraries(cs104_redundancy_server PRIVATE lib60870)
+target_link_libraries(multi_client_server PRIVATE lib60870)
+target_link_libraries(tls_client PRIVATE lib60870)
+target_link_libraries(tls_server PRIVATE lib60870)
 
-if(WIN32)
-    foreach(example_target ${EXAMPLE_TARGETS})
-        target_link_libraries(${example_target} PRIVATE legacy_stdio_definitions)
-    endforeach()
-endif()
-
-foreach(example_target ${EXAMPLE_TARGETS})
-    target_link_libraries(${example_target} ${OPENSSL_LIBRARIES})
-endforeach()
-
-if(WITH_MBEDTLS)
-    foreach(example_target ${EXAMPLE_TARGETS})
-        if (TARGET ${example_target})
-            # Link mbedtls explicitly to ensure symbols are resolved
-            target_link_libraries(${example_target} PRIVATE mbedtls_static)
-            target_include_directories(${example_target} PRIVATE 
-                "${CMAKE_SOURCE_DIR}/lib60870-C/dependencies/mbedtls-2.28.8/include"
-            )
-        endif()
-    endforeach()
-endif()
-
-# This is needed because the original project had a mix of static and shared lib linking
-# This ensures all examples link to the static lib60870
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    "${CMAKE_SOURCE_DIR}/lib60870-C/examples/cs104_client/CMakeLists.txt"
-    "${CMAKE_SOURCE_DIR}/lib60870-C/examples/cs104_server/CMakeLists.txt"
-)
+# IEC 62351-5 demos
+# target_link_libraries(iec62351_5_demo_server PRIVATE lib60870)
+# target_link_libraries(iec62351_5_demo_client PRIVATE lib60870)
+target_link_libraries(iec62351_5_demo_server PRIVATE lib60870)
+target_link_libraries(iec62351_5_demo_client PRIVATE lib60870)
+# File service examples
+# target_link_libraries(cs101_master_balanced PRIVATE file_service)
+# target_link_libraries(cs101_master_unbalanced PRIVATE file_service)
+# target_link_libraries(cs101_slave PRIVATE file_service)
+# target_link_libraries(cs101_slave_files PRIVATE file_service)
+# target_link_libraries(cs104_client PRIVATE file_service)
+# target_link_libraries(cs104_client_async PRIVATE file_service)
+# target_link_libraries(cs104_server PRIVATE file_service)
+# target_link_libraries(cs104_server_no_threads PRIVATE file_service)
+# target_link_libraries(cs104_server_files PRIVATE file_service)
+# target_link_libraries(cs104_redundancy_server PRIVATE file_service)
+# target_link_libraries(multi_client_server PRIVATE file_service)
+# target_link_libraries(tls_client PRIVATE file_service)
+# target_link_libraries(tls_server PRIVATE file_service)
+# target_link_libraries(iec62351_5_demo_server PRIVATE file_service)
+# target_link_libraries(iec62351_5_demo_client PRIVATE file_service)

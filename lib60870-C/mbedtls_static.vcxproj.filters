@@ -291,7 +291,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <CustomBuild Include="C:\Users\z005653n\Desktop\lib60870\lib60870-C\CMakeLists.txt" />
+    <CustomBuild Include="C:\Users\z005653n\Desktop\lib60870\CMakeLists.txt" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Source Files">

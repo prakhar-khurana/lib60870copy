@@ -55,7 +55,9 @@ AProfile_loadCertificate(AProfileContext self, const char* certPath, const char*
             size_t len = strlen(caPath);
             if (len > 200) len = 200;  /* Limit to 200 chars */
             char safe_path[201];
-            memcpy(safe_path, caPath, len);
+            if (len > 0) {
+                memcpy(safe_path, caPath, len);
+            }
             safe_path[len] = '\0';
             printf("[CERT] ✓ Loaded CA certificate: %s\n", safe_path);
         }
@@ -73,7 +75,9 @@ AProfile_loadCertificate(AProfileContext self, const char* certPath, const char*
             size_t len = strlen(certPath);
             if (len > 200) len = 200;  /* Limit to 200 chars */
             char safe_path[201];
-            memcpy(safe_path, certPath, len);
+            if (len > 0) {
+                memcpy(safe_path, certPath, len);
+            }
             safe_path[len] = '\0';
             printf("[CERT] ✓ Loaded local certificate: %s\n", safe_path);
         }
@@ -91,7 +95,9 @@ AProfile_loadCertificate(AProfileContext self, const char* certPath, const char*
             size_t len = strlen(keyPath);
             if (len > 200) len = 200;  /* Limit to 200 chars */
             char safe_path[201];
-            memcpy(safe_path, keyPath, len);
+            if (len > 0) {
+                memcpy(safe_path, keyPath, len);
+            }
             safe_path[len] = '\0';
             printf("[CERT] ✓ Loaded private key: %s\n", safe_path);
         }

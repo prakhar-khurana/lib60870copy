@@ -3763,7 +3763,7 @@ _IMasterConnection_getPeerAddress(IMasterConnection self, char* addrBuf, int add
 
     if (len < addrBufSize)
     {
-        strcpy_s(addrBuf, sizeof(addrBuf), buf);
+        strcpy_s(addrBuf, addrBufSize, buf);
         return len;
     }
     else

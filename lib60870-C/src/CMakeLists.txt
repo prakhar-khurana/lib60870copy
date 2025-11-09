@@ -21,6 +21,8 @@ set (lib_common_SRCS
 ./iec60870/security/62351-5/aprofile.c
 ./iec60870/security/62351-5/aprofile_62351_5.c
 ./iec60870/security/62351-5/aprofile_62351_5_handlers.c
+./iec60870/security/62351-5/aprofile_codec.c
+./iec60870/security/62351-5/aprofile_integration.c
 ./iec60870/link_layer/buffer_frame.c
 ./iec60870/link_layer/link_layer.c
 ./iec60870/link_layer/serial_transceiver_ft_1_2.c
@@ -71,8 +73,10 @@ endif (BUILD_HAL)
 IF(WIN32)
 
 IF(MSVC)
-set_source_files_properties(${lib_common_SRCS} ${lib_windows_SRCS}
-                                       PROPERTIES LANGUAGE CXX)
+# /TC flag is now applied per-target using target_compile_options
+# Removed LANGUAGE CXX property - compile as C instead
+# set_source_files_properties(${lib_common_SRCS} ${lib_windows_SRCS}
+#                                        PROPERTIES LANGUAGE CXX)
 ENDIF()
 
 set (library_SRCS
@@ -121,6 +125,10 @@ ENDIF(WITH_MBEDTLS3)
 
 include (GenerateExportHeader)
 
+set(LIB_VERSION_MAJOR 2)
+set(LIB_VERSION_MINOR 3)
+set(LIB_VERSION_PATCH 6)
+
 set(RES_FILES "")
 if ( WIN32 )
 	# Adding RC resource file for adding information to the archive
@@ -145,7 +153,13 @@ set_target_properties(lib60870-shared PROPERTIES
            OUTPUT_NAME lib60870
            SOVERSION "${LIB_VERSION_MAJOR}.${LIB_VERSION_MINOR}.${LIB_VERSION_PATCH}"
 	   WINDOWS_EXPORT_ALL_SYMBOLS true
+           LINKER_LANGUAGE C
 )
+
+# Force C compilation mode for MSVC
+if(MSVC)
+    target_compile_options(lib60870-shared PRIVATE /TC)
+endif()
 
 
 GENERATE_EXPORT_HEADER(lib60870-shared
@@ -156,6 +170,40 @@ GENERATE_EXPORT_HEADER(lib60870-shared
 )
 
 add_library (lib60870 STATIC ${library_SRCS})
+
+set_target_properties(lib60870 PROPERTIES
+           LINKER_LANGUAGE C
+)
+
+# Force C compilation mode for MSVC
+if(MSVC)
+    target_compile_options(lib60870 PRIVATE /TC)
+endif()
+
+# Define CONFIG_CS104_APROFILE for both library targets (from lib60870_config.h)
+target_compile_definitions(lib60870-shared PRIVATE CONFIG_CS104_APROFILE=1)
+target_compile_definitions(lib60870 PRIVATE CONFIG_CS104_APROFILE=1)
+
+# Add include directories for both library targets
+target_include_directories(lib60870-shared PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/inc/api
+    ${CMAKE_CURRENT_SOURCE_DIR}/inc/internal
+    ${CMAKE_CURRENT_SOURCE_DIR}/hal/inc
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${PROJECT_BINARY_DIR}
+    ${CMAKE_BINARY_DIR}/dependencies/mbedtls-2.28.8/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../liboqs/install/include
+)
+
+target_include_directories(lib60870 PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/inc/api
+    ${CMAKE_CURRENT_SOURCE_DIR}/inc/internal
+    ${CMAKE_CURRENT_SOURCE_DIR}/hal/inc
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${PROJECT_BINARY_DIR}
+    ${CMAKE_BINARY_DIR}/dependencies/mbedtls-2.28.8/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../liboqs/install/include
+)
 
 IF(UNIX)
     target_link_libraries (lib60870
@@ -176,22 +224,25 @@ IF(MINGW)
   target_link_libraries(lib60870 ws2_32 iphlpapi bcrypt mbedtls mbedx509 mbedcrypto)
 ENDIF(MINGW)
 IF(MSVC)
-  target_link_libraries(lib60870-shared ws2_32 iphlpapi bcrypt mbedtls mbedx509 mbedcrypto)
-  target_link_libraries(lib60870 ws2_32 iphlpapi bcrypt mbedtls mbedx509 mbedcrypto)
+  # Link mbedTLS libraries - order matters: mbedcrypto contains mbedtls_strerror
+  target_link_libraries(lib60870-shared PRIVATE ws2_32 iphlpapi bcrypt)
+  target_link_libraries(lib60870-shared PRIVATE mbedcrypto mbedx509 mbedtls)
+  
+  target_link_libraries(lib60870 PRIVATE ws2_32 iphlpapi bcrypt)
+  target_link_libraries(lib60870 PRIVATE mbedcrypto mbedx509 mbedtls)
 ENDIF(MSVC)
 
 # Optional: link liboqs for PQC KEM (Kyber)
-find_path(OQS_INCLUDE_DIR oqs/oqs.h)
-find_library(OQS_LIBRARY oqs)
-if (OQS_INCLUDE_DIR AND OQS_LIBRARY)
-  message(STATUS "Found liboqs: include=${OQS_INCLUDE_DIR} lib=${OQS_LIBRARY}")
-  add_definitions(-DHAVE_LIBOQS)
-  include_directories(${OQS_INCLUDE_DIR})
-  target_link_libraries(lib60870-shared ${OQS_LIBRARY})
-  target_link_libraries(lib60870 ${OQS_LIBRARY})
-else()
-  message(STATUS "liboqs not found - building without PQC KEM support")
-endif()
+# # Use the OQS paths found in the root CMakeLists.txt
+# if (OQS_INCLUDE_DIR AND OQS_LIBRARY)
+#   message(STATUS "Linking liboqs to lib60870 targets: include=${OQS_INCLUDE_DIR} lib=${OQS_LIBRARY}")
+#   target_compile_definitions(lib60870-shared PRIVATE HAVE_LIBOQS=1)
+#   target_compile_definitions(lib60870 PRIVATE HAVE_LIBOQS=1)
+#   target_link_libraries(lib60870-shared ${OQS_LIBRARY})
+#   target_link_libraries(lib60870 ${OQS_LIBRARY})
+# else()
+#   message(STATUS "liboqs not available - building without PQC KEM support")
+# endif()
 
 install (TARGETS lib60870 lib60870-shared
 	RUNTIME DESTINATION bin COMPONENT Applications

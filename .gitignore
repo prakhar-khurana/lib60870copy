@@ -9,3 +9,8 @@ lib60870-C/dependencies/**
 build-pqc/**
 .git_disabled/**
 liboqs/**
+**/*.vcxproj
+**/*.vcxproj.filters
+**/*.vcxproj.user
+**/*.sln
+**/*.dir

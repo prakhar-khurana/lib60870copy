@@ -34,9 +34,7 @@ target_link_libraries(tls_server PRIVATE lib60870)
 # IEC 62351-5 demos
 # target_link_libraries(iec62351_5_demo_server PRIVATE lib60870)
 # target_link_libraries(iec62351_5_demo_client PRIVATE lib60870)
-target_link_libraries(iec62351_5_demo_server PRIVATE lib60870)
-target_link_libraries(iec62351_5_demo_client PRIVATE lib60870)
-# File service examples
+
 # target_link_libraries(cs101_master_balanced PRIVATE file_service)
 # target_link_libraries(cs101_master_unbalanced PRIVATE file_service)
 # target_link_libraries(cs101_slave PRIVATE file_service)

@@ -671,6 +671,12 @@ static bool
 checkMessage(CS104_Connection self, uint8_t* buffer, int msgSize)
 {
     bool retVal = true;
+    
+    /* Debug: Print received message type - only for U-frames to reduce output */
+    if (msgSize >= 3 && (buffer[2] & 0x03) == 0x03) {
+        printf("[CLIENT] Received U-frame: 0x68 0x%02X 0x%02X (size=%d)\n", buffer[1], buffer[2], msgSize);
+        fflush(stdout);
+    }
 
     if ((buffer[2] & 1) == 0) /* I format frame */
     {
@@ -747,6 +753,8 @@ checkMessage(CS104_Connection self, uint8_t* buffer, int msgSize)
     else if ((buffer[2] & 0x03) == 0x03) /* U format frame */
     {
         DEBUG_PRINT("Received U frame\n");
+        printf("[CLIENT] Received U-frame (type: 0x%02X)\n", buffer[2]);
+        fflush(stdout);
 
         self->uMessageTimeout = 0;
 
@@ -772,12 +780,28 @@ checkMessage(CS104_Connection self, uint8_t* buffer, int msgSize)
         else if (buffer[2] == 0x0b)
         { /* STARTDT_CON */
             DEBUG_PRINT("Received STARTDT_CON\n");
+            printf("[CLIENT] *** STARTDT_CON RECEIVED (0x0B) - Connection activated ***\n");
+            fflush(stdout);
 
             self->conState = STATE_ACTIVE;
 
 #if (CONFIG_CS104_APROFILE == 1)
-            if (self->sec)
-                AProfile_onStartDT(self->sec);
+            printf("[CLIENT] Checking security context...\n");
+            printf("[CLIENT] Security context pointer: %p\n", (void*)self->sec);
+            fflush(stdout);
+            
+            if (self->sec) {
+                /* IEC 62351-5:2023: Initiate compliant 8-step handshake after STARTDT_CON */
+                printf("[HANDSHAKE] *** Initiating IEC 62351-5:2023 8-step handshake... ***\n");
+                fflush(stdout);
+                bool handshake_result = AProfile_startCompliantHandshake(self->sec);
+                printf("[HANDSHAKE] Handshake initiation returned: %s\n", handshake_result ? "SUCCESS" : "FAILED");
+                fflush(stdout);
+            } else {
+                printf("[HANDSHAKE] *** ERROR: Security context is NULL! ***\n");
+                printf("[HANDSHAKE] Security was not properly initialized!\n");
+                fflush(stdout);
+            }
 #endif
         }
         else if (buffer[2] == 0x23)
@@ -1040,8 +1064,16 @@ handleConnection(void* parameter)
 
                             CS104_ConState oldState = self->conState;
 
+                            /* Debug: Show what message we're about to process */
+                            if (bytesRec >= 3 && (self->recvBuffer[2] & 0x03) == 0x03) {
+                                printf("[CLIENT] Processing U-frame: 0x%02X\n", self->recvBuffer[2]);
+                                fflush(stdout);
+                            }
+                            
                             if (checkMessage(self, self->recvBuffer, bytesRec) == false)
                             {
+                                printf("[CLIENT] ERROR: checkMessage returned false\n");
+                                fflush(stdout);
                                 /* close connection on error */
                                 loopRunning = false;
 
@@ -1238,13 +1270,18 @@ void
 CS104_Connection_setSecurityConfig(CS104_Connection self, const CS104_SecurityConfig* sec,
                                    const CS104_CertConfig* cert, const CS104_RoleConfig* role)
 {
-
+    printf("[CLIENT] Setting security configuration...\n");
+    fflush(stdout);
+    
     if (self->sec)
         AProfile_destroy(self->sec);
 
-    self->sec = AProfile_create(self, cs104Client_sendAsdu, &(self->alParameters), true); /* true = client */
+    self->sec = AProfile_create(self, cs104Client_sendAsdu, &(self->alParameters), true); /* true = client/controlling station */
 
     if (self->sec) {
+        printf("[CLIENT] Security context created successfully\n");
+        fflush(stdout);
+        
         if (self->desiredAlgorithm == 2) {
 #ifdef HAVE_LIBOQS
             AProfile_setAlgorithm(self->sec, APROFILE_ALG_KYBER);
@@ -1254,6 +1291,20 @@ CS104_Connection_setSecurityConfig(CS104_Connection self, const CS104_SecurityCo
         } else {
             AProfile_setAlgorithm(self->sec, APROFILE_ALG_ECDH);
         }
+        
+        /* Load certificates if provided */
+        if (cert && (cert->privateKeyFile || cert->ownCertificateFile || cert->caCertificateFile))
+        {
+            printf("[CLIENT] Loading certificates into security context...\n");
+            fflush(stdout);
+            AProfile_loadCertificate(self->sec,
+                                     cert->ownCertificateFile,
+                                     cert->privateKeyFile,
+                                     cert->caCertificateFile);
+        }
+    } else {
+        printf("[CLIENT] ERROR: Failed to create security context!\n");
+        fflush(stdout);
     }
 }
 

@@ -111,6 +111,14 @@
 #endif
 
 /**
+ * Enable TLS support for CS104 connections.
+ * Requires mbedTLS or OpenSSL.
+ */
+#ifndef CONFIG_CS104_SUPPORT_TLS
+#define CONFIG_CS104_SUPPORT_TLS 1
+#endif
+
+/**
  * Enable support for IEC 62351-5 A-profile security layer.
  *
  * When set to 1 additional security related code will be

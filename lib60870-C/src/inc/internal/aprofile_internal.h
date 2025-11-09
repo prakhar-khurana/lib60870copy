@@ -20,7 +20,12 @@
 #ifndef APROFILE_INTERNAL_H_
 #define APROFILE_INTERNAL_H_
 
+#include "lib60870_config.h"
 #include "aprofile_context.h"
+
+#ifdef __cplusplus
+extern "C" {}
+#endif
 
 #if (CONFIG_CS104_APROFILE == 1)
 
@@ -60,10 +65,9 @@ typedef enum {
 /* Placeholder for security state */
 struct sAProfileContext
 {
-    bool security_active;
-    bool isClient; /* true for client (CS104_Connection), false for server (MasterConnection) */
-    uint32_t local_sequence_number;
-    uint32_t remote_sequence_number;
+    bool security_active;  /* Security session active flag */
+    bool isControllingStation; /* true for controlling station (CS104_Connection/client), false for controlled station (MasterConnection/server) - IEC 62351-5:2023 */
+    /* Note: DSQ_local and DSQ_remote moved below with other IEC 62351-5:2023 variables */
 
     void* connection; /* Reference to the CS104_Connection or MasterConnection */
     AProfile_SendAsduCallback sendAsdu;
@@ -82,21 +86,26 @@ struct sAProfileContext
     uint8_t localPublicKey[65];
     int localPublicKeyLen;
 
-    /* IEC 62351-5:2023 Two-Level Key Hierarchy */
-    uint8_t encryption_update_key[32];  /* 256-bit Encryption Update Key */
-    uint8_t authentication_update_key[32]; /* 256-bit Authentication Update Key */
-    uint8_t control_session_key[32];    /* 256-bit Control Direction Session Key */
-    uint8_t monitor_session_key[32];    /* 256-bit Monitoring Direction Session Key */
+    /* IEC 62351-5:2023 Two-Level Key Hierarchy - Standard Nomenclature */
+    uint8_t K_UE[32];      /* K_UE: Encryption Update Key (256-bit) - Clause 8.3.10 */
+    uint8_t K_UA[32];      /* K_UA: Authentication Update Key (256-bit) - Clause 8.3.10 */
+    uint8_t K_SC[32];      /* K_SC: Control Direction Session Key (256-bit) - Clause 8.4.2 */
+    uint8_t K_SM[32];      /* K_SM: Monitor Direction Session Key (256-bit) - Clause 8.4.2 */
     
-    /* Random Data for HKDF Salt */
-    uint8_t controlling_station_random[32];
-    uint8_t controlled_station_random[32];
+    /* Random Data for HKDF Salt - IEC 62351-5:2023 Clause 8.3.10.4 */
+    uint8_t R_C[32];       /* R_C: Controlling Station Random (32 bytes) */
+    uint8_t R_S[32];       /* R_S: Controlled Station Random (32 bytes) */
     
-    /* State Machine */
+    /* State Machine - IEC 62351-5:2023 Clause 8.3 */
     AProfileState state;
     
-    /* Association ID */
-    uint16_t association_id;
+    /* Association IDs - IEC 62351-5:2023 Clause 8.3.1 */
+    uint16_t AIM;          /* AIM: Controlling Station Association ID */
+    uint16_t AIS;          /* AIS: Controlled Station Association ID */
+    
+    /* Data Sequence Number - IEC 62351-5:2023 Clause 8.5.2.2.4 */
+    uint32_t DSQ_local;    /* DSQ: Local Data Sequence Number (starts at 1) */
+    uint32_t DSQ_remote;   /* DSQ: Remote Data Sequence Number */
 
     /* Buffer for hybrid key exchange material */
     uint8_t localHybridKey[2048];
@@ -148,6 +157,23 @@ struct sAProfileContext
 
 void AProfile_setAlgorithm(AProfileContext self, AProfileAlgorithm alg);
 
+/* IEC 62351-5:2023 Integration Functions */
+bool AProfile_loadCertificate(AProfileContext self, const char* certPath, const char* keyPath, const char* caPath);
+bool AProfile_initiateHandshake(AProfileContext self);
+bool AProfile_sendSecureASdu(AProfileContext self, CS101_ASDU asdu);
+void AProfile_printKeys(AProfileContext self);
+const char* AProfile_getStateName(AProfileContext self);
+bool AProfile_encryptASdu(AProfileContext self, const uint8_t* plaintext, size_t plaintext_len,
+                          uint8_t* ciphertext, size_t* ciphertext_len, uint8_t* tag);
+bool AProfile_decryptASdu(AProfileContext self, const uint8_t* ciphertext, size_t ciphertext_len,
+                          const uint8_t* tag, uint32_t sequence_number,
+                          uint8_t* plaintext, size_t* plaintext_len);
+                          
+bool AProfile_sendUpdateKeyChangeRequest(AProfileContext self);
+bool AProfile_sendSessionRequest(AProfileContext self);
+bool AProfile_sendSessionKeyChangeRequest(AProfileContext self);
+bool AProfile_startCompliantHandshake(AProfileContext self);
+
 #else
 
 /* This is a dummy struct for when A-profile is disabled */
@@ -157,5 +183,7 @@ struct sAProfileContext
 };
 
 #endif /* CONFIG_CS104_APROFILE */
+
+
 
 #endif /* APROFILE_INTERNAL_H_ */

@@ -20,7 +20,6 @@
  */
 
 #ifdef _MSC_VER
-#define _CRT_SECURE_NO_WARNINGS
 #define _CRT_NONSTDC_NO_DEPRECATE
 #endif
 
@@ -1501,6 +1500,9 @@ createSlave(int maxLowPrioQueueSize, int maxHighPrioQueueSize)
 
 #if (CONFIG_CS104_APROFILE == 1)
         self->securityConfigured = false;
+        memset(&self->securityConfig, 0, sizeof(self->securityConfig));
+        memset(&self->certConfig, 0, sizeof(self->certConfig));
+        memset(&self->roleConfig, 0, sizeof(self->roleConfig));
 #endif
 
         self->plugins = NULL;
@@ -1572,7 +1574,7 @@ CS104_Slave_setLocalAddress(CS104_Slave self, const char* ipAddress)
     self->localAddress = (char*)GLOBAL_MALLOC(strlen(ipAddress) + 1);
 
     if (self->localAddress)
-        strcpy(self->localAddress, ipAddress);
+        strcpy_s(self->localAddress, strlen(ipAddress) + 1, ipAddress);
 }
 
 void
@@ -1806,8 +1808,53 @@ void
 CS104_Slave_setSecurityConfig(CS104_Slave self, const CS104_SecurityConfig* sec,
                               const CS104_CertConfig* cert, const CS104_RoleConfig* role)
 {
+    if (sec) {
+        self->securityConfig = *sec;
+    }
+    
+    if (cert) {
+        /* Store certificate paths - they will be loaded when AProfile context is created */
+        if (cert->privateKeyFile) {
+            size_t len = strlen(cert->privateKeyFile) + 1;
+            if (self->certConfig.privateKeyFile) {
+                GLOBAL_FREEMEM((void*)self->certConfig.privateKeyFile);
+            }
+            self->certConfig.privateKeyFile = (char*)GLOBAL_MALLOC(len);
+            if (self->certConfig.privateKeyFile) {
+                memcpy((void*)self->certConfig.privateKeyFile, cert->privateKeyFile, len);
+            }
+        }
+        
+        if (cert->ownCertificateFile) {
+            size_t len = strlen(cert->ownCertificateFile) + 1;
+            if (self->certConfig.ownCertificateFile) {
+                GLOBAL_FREEMEM((void*)self->certConfig.ownCertificateFile);
+            }
+            self->certConfig.ownCertificateFile = (char*)GLOBAL_MALLOC(len);
+            if (self->certConfig.ownCertificateFile) {
+                memcpy((void*)self->certConfig.ownCertificateFile, cert->ownCertificateFile, len);
+            }
+        }
+        
+        if (cert->caCertificateFile) {
+            size_t len = strlen(cert->caCertificateFile) + 1;
+            if (self->certConfig.caCertificateFile) {
+                GLOBAL_FREEMEM((void*)self->certConfig.caCertificateFile);
+            }
+            self->certConfig.caCertificateFile = (char*)GLOBAL_MALLOC(len);
+            if (self->certConfig.caCertificateFile) {
+                memcpy((void*)self->certConfig.caCertificateFile, cert->caCertificateFile, len);
+            }
+        }
+    }
+    
+    if (role) {
+        self->roleConfig = *role;
+    }
+    
     self->securityConfigured = true;
     /* AProfile contexts will be created in MasterConnection_init when connections are established */
+    /* Certificates will be loaded when AProfile context is created */
 }
 #else
 void
@@ -2901,6 +2948,12 @@ handleMessage(MasterConnection self, uint8_t* buffer, int msgSize)
 
     if (msgSize >= 3)
     {
+        /* Debug: Print U-frame messages */
+        if ((buffer[2] & 0x03) == 0x03) {
+            printf("[SERVER] Received U-frame: 0x68 0x%02X 0x%02X (size=%d)\n", buffer[1], buffer[2], msgSize);
+            fflush(stdout);
+        }
+        
         if (buffer[0] != 0x68)
         {
             DEBUG_PRINT("CS104 SLAVE: Invalid START character!");
@@ -3045,18 +3098,40 @@ handleMessage(MasterConnection self, uint8_t* buffer, int msgSize)
         /* Check for STARTDT_ACT message */
         else if ((buffer[2] & 0x07) == 0x07)
         {
+            printf("[SERVER] *** Received STARTDT_ACT (0x07) ***\n");
+            fflush(stdout);
+            
             CS104_Slave_activate(self->slave, self);
 
             HighPriorityASDUQueue_resetConnectionQueue(self->highPrioQueue);
 
             DEBUG_PRINT("CS104 SLAVE: Send STARTDT_CON\n");
+            printf("[SERVER] *** Sending STARTDT_CON (0x0B) - Connection activated ***\n");
+            fflush(stdout);
 
-            if (writeToSocket(self, STARTDT_CON_MSG, STARTDT_CON_MSG_SIZE) < 0)
+            if (writeToSocket(self, STARTDT_CON_MSG, STARTDT_CON_MSG_SIZE) < 0) {
+                printf("[SERVER] ERROR: Failed to send STARTDT_CON\n");
+                fflush(stdout);
                 return false;
+            }
+            
+            printf("[SERVER] STARTDT_CON sent successfully\n");
+            fflush(stdout);
 
 #if (CONFIG_CS104_APROFILE == 1)
-            if (self->sec)
-                AProfile_onStartDT(self->sec);
+            printf("[SERVER] Checking security context...\n");
+            printf("[SERVER] Security context pointer: %p\n", (void*)self->sec);
+            fflush(stdout);
+            
+            if (self->sec) {
+                /* IEC 62351-5:2023: Server waits for client to initiate handshake */
+                /* The handshake will be triggered when client sends Association Request */
+                printf("[SERVER] Security context ready - waiting for client handshake initiation\n");
+                fflush(stdout);
+            } else {
+                printf("[SERVER] *** WARNING: Security context is NULL! ***\n");
+                fflush(stdout);
+            }
 #endif
         }
 
@@ -3688,7 +3763,7 @@ _IMasterConnection_getPeerAddress(IMasterConnection self, char* addrBuf, int add
 
     if (len < addrBufSize)
     {
-        strcpy(addrBuf, buf);
+        strcpy_s(addrBuf, sizeof(addrBuf), buf);
         return len;
     }
     else
@@ -3835,10 +3910,31 @@ MasterConnection_init(MasterConnection self, Socket skt, MessageQueue lowPrioQue
         /* Create AProfile context if security is configured and not already created */
         if (self->slave->securityConfigured && self->sec == NULL)
         {
-            self->sec = AProfile_create(self, cs104Server_sendAsdu, &(self->slave->alParameters), false); /* false = server */
+            printf("[SERVER] Creating security context for new connection...\n");
+            fflush(stdout);
+            
+            self->sec = AProfile_create(self, cs104Server_sendAsdu, &(self->slave->alParameters), false); /* false = server/controlled station */
             if (self->sec == NULL)
             {
+                printf("[SERVER] ERROR: Failed to create security context!\n");
+                fflush(stdout);
                 return false;
+            }
+            
+            printf("[SERVER] Security context created successfully\n");
+            fflush(stdout);
+            
+            /* Load certificates if provided */
+            if (self->slave->certConfig.privateKeyFile || 
+                self->slave->certConfig.ownCertificateFile || 
+                self->slave->certConfig.caCertificateFile)
+            {
+                printf("[SERVER] Loading certificates into security context...\n");
+                fflush(stdout);
+                AProfile_loadCertificate(self->sec,
+                                        self->slave->certConfig.ownCertificateFile,
+                                        self->slave->certConfig.privateKeyFile,
+                                        self->slave->certConfig.caCertificateFile);
             }
         }
 #endif
@@ -5054,6 +5150,19 @@ CS104_Slave_destroy(CS104_Slave self)
         {
             LinkedList_destroyStatic(self->plugins);
         }
+
+#if (CONFIG_CS104_APROFILE == 1)
+        /* Clean up certificate paths */
+        if (self->certConfig.privateKeyFile) {
+            GLOBAL_FREEMEM((void*)self->certConfig.privateKeyFile);
+        }
+        if (self->certConfig.ownCertificateFile) {
+            GLOBAL_FREEMEM((void*)self->certConfig.ownCertificateFile);
+        }
+        if (self->certConfig.caCertificateFile) {
+            GLOBAL_FREEMEM((void*)self->certConfig.caCertificateFile);
+        }
+#endif
 
         GLOBAL_FREEMEM(self);
     }

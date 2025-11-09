@@ -5,10 +5,11 @@
  * IEC 62351-5:2023 Application Layer Security (A-Profile)
  */
 
-#include "cs104_slave.h"
-#include "cs101_information_objects.h"
-#include "hal_thread.h"
-#include "hal_time.h"
+#include "../../src/inc/api/cs104_slave.h"
+#include "../../src/inc/api/cs101_information_objects.h"
+#include "../../src/inc/api/cs104_security.h"
+#include "../../src/hal/inc/hal_thread.h"
+#include "../../src/hal/inc/hal_time.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -104,17 +105,65 @@ securityEventHandler(void* parameter, TLSEventLevel eventLevel, int eventCode, c
 
 int main(int argc, char** argv)
 {
+    /* Flush output immediately to ensure we see startup messages */
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+    
     printf("\n");
     printf("╔════════════════════════════════════════════════════════════╗\n");
     printf("║   IEC 62351-5:2023 Demo Server                            ║\n");
     printf("║   IEC 60870-5-104 with Application Layer Security         ║\n");
     printf("╚════════════════════════════════════════════════════════════╝\n");
     printf("\n");
+    fflush(stdout);
 
     signal(SIGINT, sigint_handler);
 
     /* Create server */
     CS104_Slave slave = CS104_Slave_create(100, 100);
+    
+    /* Configure security using CS104 API */
+    CS104_SecurityConfig secConfig = {
+        .sessionKeyChangeInterval = 3600000,  /* 1 hour */
+        .challengeResponseTimeout = 5000      /* 5 seconds */
+    };
+    
+    CS104_CertConfig certConfig = {
+        .privateKeyFile = "../tests/server_CA1_1.key",
+        .ownCertificateFile = "../tests/server_CA1_1.pem",
+        .caCertificateFile = "../tests/root_CA1.pem"
+    };
+    
+    /* Print certificate paths safely to avoid buffer overflow */
+    printf("[INIT] Certificate paths:\n");
+    if (certConfig.privateKeyFile) {
+        printf("  Private Key: %s\n", certConfig.privateKeyFile);
+    } else {
+        printf("  Private Key: NULL\n");
+    }
+    if (certConfig.ownCertificateFile) {
+        printf("  Certificate: %s\n", certConfig.ownCertificateFile);
+    } else {
+        printf("  Certificate: NULL\n");
+    }
+    if (certConfig.caCertificateFile) {
+        printf("  CA Certificate: %s\n", certConfig.caCertificateFile);
+    } else {
+        printf("  CA Certificate: NULL\n");
+    }
+    printf("\n");
+    fflush(stdout);
+    
+    CS104_RoleConfig roleConfig = {
+        .roleId = 1,
+        .permissions = 0xFFFF
+    };
+    
+    /* Set security configuration - this creates the AProfile context internally */
+    CS104_Slave_setSecurityConfig(slave, &secConfig, &certConfig, &roleConfig);
+    
+    /* Note: The AProfile context is managed internally by CS104_Slave */
+    /* It will be created per-connection when clients connect */
     
     /* Set connection parameters */
     CS104_Slave_setLocalAddress(slave, "0.0.0.0");
@@ -151,11 +200,10 @@ int main(int argc, char** argv)
         return 1;
     }
     
-    /* Add some data points */
-    CS101_AppLayerParameters alParams = CS104_Slave_getAppLayerParameters(slave);
-    
     /* Simulate sending data periodically */
     int counter = 0;
+    CS101_AppLayerParameters alParams = CS104_Slave_getAppLayerParameters(slave);
+    
     while (running) {
         Thread_sleep(5000);
         
@@ -176,6 +224,12 @@ int main(int argc, char** argv)
     }
     
     printf("\nShutting down server...\n");
+    
+    /* IEC 60870-5-104: Server will close all connections properly */
+    /* IEC 62351-5:2023: Security sessions will be terminated when connections close */
+    printf("[PROTOCOL] Closing all connections (IEC 60870-5-104)...\n");
+    printf("[SECURITY] Security sessions terminated\n");
+    
     CS104_Slave_stop(slave);
     CS104_Slave_destroy(slave);
     

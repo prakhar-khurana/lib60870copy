@@ -8152,47 +8152,47 @@ SecurityPublicKey_encode(SecurityPublicKey self, Frame frame, CS101_AppLayerPara
 struct sInformationObjectVFT securityPublicKeyVFT = { (EncodeFunction)SecurityPublicKey_encode,
                                                       (DestroyFunction)SecurityPublicKey_destroy };
 
-static void
+void
 SecurityPublicKey_initialize(SecurityPublicKey self)
 {
     self->virtualFunctionTable = &(securityPublicKeyVFT);
     self->type = S_RP_NA_1;
 }
 
-SecurityPublicKey
-SecurityPublicKey_create(SecurityPublicKey self, int ioa, int keyLength, const uint8_t* keyValue)
-{
-    if (self == NULL)
-        self = (SecurityPublicKey)GLOBAL_MALLOC(sizeof(struct sSecurityPublicKey));
+// SecurityPublicKey
+// SecurityPublicKey_create(SecurityPublicKey self, int ioa, int keyLength, const uint8_t* keyValue)
+// {
+//     if (self == NULL)
+//         self = (SecurityPublicKey)GLOBAL_MALLOC(sizeof(struct sSecurityPublicKey));
 
-    if (self)
-    {
-        SecurityPublicKey_initialize(self);
-        self->objectAddress = ioa;
-        self->keyLength = keyLength;
-        memcpy(self->keyValue, keyValue, keyLength);
-    }
+//     if (self)
+//     {
+//         SecurityPublicKey_initialize(self);
+//         self->objectAddress = ioa;
+//         self->keyLength = keyLength;
+//         memcpy(self->keyValue, keyValue, keyLength);
+//     }
 
-    return self;
-}
+//     return self;
+// }
 
-void
-SecurityPublicKey_destroy(SecurityPublicKey self)
-{
-    GLOBAL_FREEMEM(self);
-}
+// void
+// SecurityPublicKey_destroy(SecurityPublicKey self)
+// {
+//     GLOBAL_FREEMEM(self);
+// }
 
-int
-SecurityPublicKey_getKeyLength(SecurityPublicKey self)
-{
-    return self->keyLength;
-}
+// int
+// SecurityPublicKey_getKeyLength(SecurityPublicKey self)
+// {
+//     return self->keyLength;
+// }
 
-const uint8_t*
-SecurityPublicKey_getKeyValue(SecurityPublicKey self)
-{
-    return self->keyValue;
-}
+// const uint8_t*
+// SecurityPublicKey_getKeyValue(SecurityPublicKey self)
+// {
+//     return self->keyValue;
+// }
 
 SecurityPublicKey
 SecurityPublicKey_getFromBuffer(SecurityPublicKey self, CS101_AppLayerParameters parameters, uint8_t* msg, int msgSize,

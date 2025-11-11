@@ -2070,6 +2070,44 @@ isSentBufferFull(MasterConnection self)
 static void
 sendASDU(MasterConnection self, uint8_t* buffer, int msgSize, uint64_t entryId, uint8_t* queueEntry)
 {
+#if (CONFIG_CS104_APROFILE == 1)
+    /* Apply encryption to queued ASDUs if security session is established */
+    if (self->sec && AProfile_ready(self->sec))
+    {
+        printf("[QUEUE-TX] Applying IEC 62351-5 ALS encryption to queued ASDU (size=%d)...\n", msgSize);
+        
+        /* Create a BufferFrame wrapper for the existing buffer */
+        struct sBufferFrame bufferFrame;
+        Frame frame = BufferFrame_initialize(&bufferFrame, buffer, IEC60870_5_104_APCI_LENGTH);
+        
+        /* The frame now wraps our buffer. We need to tell it the current size.
+         * Since BufferFrame tracks size internally via appendBytes, we simulate
+         * the ASDU being already in the buffer by advancing the internal pointer */
+        int asduSize = msgSize - IEC60870_5_104_APCI_LENGTH;
+        for (int i = 0; i < asduSize; i++) {
+            /* Buffer already has data, just advance internal size counter */
+            Frame_setNextByte(frame, buffer[IEC60870_5_104_APCI_LENGTH + i]);
+        }
+        
+        /* Apply encryption - this will modify the buffer in place */
+        if (AProfile_wrapOutAsdu(self->sec, (T104Frame)frame)) {
+            /* Update message size after encryption */
+            msgSize = Frame_getMsgSize(frame);
+            printf("[QUEUE-TX] Encryption applied successfully, new size: %d\n", msgSize);
+        } else {
+            printf("[QUEUE-TX] ERROR: Encryption failed!\n");
+        }
+    }
+    else if (self->sec)
+    {
+        printf("[QUEUE-TX] DEBUG: self->sec exists (%p) but AProfile_ready returned FALSE\n", (void*)self->sec);
+    }
+    else
+    {
+        printf("[QUEUE-TX] DEBUG: self->sec is NULL - sending plaintext\n");
+    }
+#endif
+
     int currentIndex = 0;
 
     if (self->oldestSentASDU == -1)
@@ -2133,7 +2171,21 @@ sendASDUInternal(MasterConnection self, CS101_ASDU asdu)
             printf("\n");
 
             #if (CONFIG_CS104_APROFILE == 1)
-            if (self->sec && AProfile_ready(self->sec))
+            /* Check if this is a handshake control message */
+            TypeID typeId = CS101_ASDU_getTypeID(asdu);
+            bool isHandshakeMessage = (typeId == S_AR_NA_1 || typeId == S_AS_NA_1 || 
+                                       typeId == S_UK_NA_1 || typeId == S_UR_NA_1 ||
+                                       typeId == S_SR_NA_1 || typeId == S_SS_NA_1 ||
+                                       typeId == S_SK_NA_1 || typeId == S_SQ_NA_1);
+            
+            /* Handshake control messages must be sent even before security session is established */
+            if (isHandshakeMessage) {
+                printf("[APDU-TX] Sending handshake control message (Type=%d) - bypassing security check\n", typeId);
+                fflush(stdout);
+                /* Don't apply encryption to handshake messages - they are sent in plaintext */
+            }
+            /* Only send data if security session is established */
+            else if (self->sec && AProfile_ready(self->sec))
             {
                 printf("[APDU-TX] Applying IEC 62351-5 ALS encryption...\n");
                 AProfile_wrapOutAsdu(self->sec, (T104Frame)frame);
@@ -2141,7 +2193,25 @@ sendASDUInternal(MasterConnection self, CS101_ASDU asdu)
             }
             else
             {
-                printf("[APDU-TX] No ALS encryption (session not established)\n");
+                if (self->sec) {
+                    printf("[APDU-TX] DEBUG: self->sec exists (%p) but AProfile_ready returned FALSE\n", (void*)self->sec);
+                } else {
+                    printf("[APDU-TX] DEBUG: self->sec is NULL\n");
+                }
+                
+                printf("[APDU-TX] WARNING: No ALS encryption (session not established) - dropping ASDU\n");
+                printf("[APDU-TX] Security context: %p, Ready: %s\n", 
+                       (void*)self->sec, 
+                       (self->sec && AProfile_ready(self->sec)) ? "YES" : "NO");
+                fflush(stdout);
+                /* Don't send unencrypted data if security is configured */
+                if (self->slave->securityConfigured) {
+                    printf("[APDU-TX] Security configured but session not established - NOT sending ASDU\n");
+                    fflush(stdout);
+                    /* Note: ASDU will be destroyed by caller, we just skip sending */
+                    asduSent = false;
+                    goto skip_send;
+                }
             }
             #endif
 
@@ -2153,12 +2223,16 @@ sendASDUInternal(MasterConnection self, CS101_ASDU asdu)
             printf("\n[APDU-TX] =====================================\n\n");
 
             sendASDU(self, frameBuffer.msg, frameBuffer.msgSize, 0, NULL);
+            asduSent = true;  /* Mark as sent after successful sendASDU call */
 
+skip_send:
 #if (CONFIG_USE_SEMAPHORES == 1)
             Semaphore_post(self->sentASDUsLock);
 #endif
 
-            asduSent = true;
+            if (asduSent) {
+                /* asduSent might have been set to false above if security check failed */
+            }
         }
         else
         {
@@ -3051,10 +3125,20 @@ handleMessage(MasterConnection self, uint8_t* buffer, int msgSize)
                  */
                 if (self->sec)
                 {
+                    printf("[SERVER] Processing I-frame with security context (ASDU length=%d)\n", asduLen);
+                    fflush(stdout);
                     AProfileKind kind =
                         AProfile_handleInPdu(self->sec, buffer + 6, msgSize - 6, &asduBuf, &asduLen);
-                    if (kind == APROFILE_CTRL_MSG)
+                    if (kind == APROFILE_CTRL_MSG) {
+                        printf("[SERVER] Security control message handled - returning\n");
+                        fflush(stdout);
                         return true;
+                    }
+                    printf("[SERVER] Security message processing returned kind=%d, new ASDU length=%d\n", kind, asduLen);
+                    fflush(stdout);
+                } else {
+                    printf("[SERVER] WARNING: Received I-frame but security context is NULL!\n");
+                    fflush(stdout);
                 }
 #endif
 

@@ -313,9 +313,16 @@ bool
 AProfile_wrapOutAsdu(AProfileContext self, T104Frame frame)
 {
 #if (CONFIG_CS104_APROFILE == 1)
+    printf("[ENCRYPT-DEBUG] AProfile_wrapOutAsdu called\n");
+    printf("[ENCRYPT-DEBUG] security_active: %s\n", self->security_active ? "TRUE" : "FALSE");
+    printf("[ENCRYPT-DEBUG] AProfile_ready: %s\n", AProfile_ready(self) ? "TRUE" : "FALSE");
+    
     if (!self->security_active || !AProfile_ready(self)) {
+        printf("[ENCRYPT-DEBUG] Skipping encryption - security not active/ready\n");
         return true; /* Do nothing if security is not active */
     }
+    
+    printf("[ENCRYPT-DEBUG] Proceeding with AES-256-GCM encryption...\n");
 
     /* Use Frame interface instead of T104Frame to avoid type mismatch issues */
     Frame genericFrame = (Frame)frame;
@@ -427,11 +434,26 @@ AProfile_handleInPdu(AProfileContext self, const uint8_t* in, int inSize, const 
 {
 #if (CONFIG_CS104_APROFILE == 1)
     /* Handle incoming key exchange messages */
+    printf("[APROFILE] AProfile_handleInPdu called (inSize=%d)\n", inSize);
+    fflush(stdout);
+    
+    /* Debug: Print first few bytes of buffer */
+    if (inSize > 0) {
+        printf("[APROFILE] First 10 bytes of buffer: ");
+        for (int i = 0; i < (inSize > 10 ? 10 : inSize); i++) {
+            printf("%02X ", in[i]);
+        }
+        printf("\n");
+        fflush(stdout);
+    }
+    
     struct sCS101_ASDU _asdu;
     CS101_ASDU asdu = CS101_ASDU_createFromBufferEx(&_asdu, self->parameters, (uint8_t*)in, inSize);
 
     if (asdu) {
         TypeID typeId = CS101_ASDU_getTypeID(asdu);
+        printf("[APROFILE] Received ASDU Type: %d (expected S_AR_NA_1=140, S_AS_NA_1=141, etc.)\n", typeId);
+        fflush(stdout);
         
         /* Route IEC 62351-5:2023 compliant messages to the proper handler */
         if (typeId == S_AR_NA_1 || typeId == S_AS_NA_1 || 
@@ -439,12 +461,26 @@ AProfile_handleInPdu(AProfileContext self, const uint8_t* in, int inSize, const 
             typeId == S_SR_NA_1 || typeId == S_SS_NA_1 ||
             typeId == S_SK_NA_1 || typeId == S_SQ_NA_1) {
             
+            printf("[APROFILE] Routing security message (Type=%d) to handler...\n", typeId);
+            fflush(stdout);
+            
             if (AProfile_handleCompliantMessage(self, asdu)) {
+                printf("[APROFILE] Security message handled successfully\n");
+                fflush(stdout);
                 *out = NULL;
                 *outSize = 0;
                 return APROFILE_CTRL_MSG;
+            } else {
+                printf("[APROFILE] ERROR: Failed to handle security message\n");
+                fflush(stdout);
             }
+        } else {
+            printf("[APROFILE] Not a security message (Type=%d), passing through\n", typeId);
+            fflush(stdout);
         }
+    } else {
+        printf("[APROFILE] WARNING: Failed to parse ASDU from buffer (inSize=%d)\n", inSize);
+        fflush(stdout);
     }
 
     /* LEGACY S_RP_NA_1 HANDLING - DISABLED for IEC 62351-5:2023 compliance
@@ -542,18 +578,24 @@ AProfile_handleInPdu(AProfileContext self, const uint8_t* in, int inSize, const 
     
 
     /* Check if security is active and if this is an encrypted ASDU */
+    printf("[DECRYPT-DEBUG] Checking if security is active: %s\n", self->security_active ? "TRUE" : "FALSE");
     if (!self->security_active) {
+        printf("[DECRYPT-DEBUG] Security not active - passing through plaintext\n");
         *out = in;
         *outSize = inSize;
         return APROFILE_PLAINTEXT;
     }
 
     /* Check if the incoming message is a secure ASDU (type S_SE_NA_1) */
+    printf("[DECRYPT-DEBUG] Checking ASDU type: %d (S_SE_NA_1=%d)\n", (inSize > 0) ? in[0] : -1, S_SE_NA_1);
     if (inSize < 1 || in[0] != S_SE_NA_1) {
+        printf("[DECRYPT-DEBUG] Not S_SE_NA_1 - passing through plaintext\n");
         *out = in;
         *outSize = inSize;
         return APROFILE_PLAINTEXT;
     }
+    
+    printf("[DECRYPT-DEBUG] Received S_SE_NA_1 - proceeding with AES-256-GCM decryption...\n");
 
     /* Parse the SecurityEncryptedData information object */
     SecurityEncryptedData sed = SecurityEncryptedData_getFromBuffer(NULL, self->parameters, (uint8_t*)in + 6, inSize - 6, 0, false);

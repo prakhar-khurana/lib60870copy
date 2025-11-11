@@ -75,10 +75,14 @@ AProfile_handleCompliantMessage(AProfileContext self, CS101_ASDU asdu)
         case S_UR_NA_1:
             /* Client receives Update Key Change Response */
             printf("\n[HANDSHAKE STEP 4/8] Received Update Key Change Response (S_UR_NA_1)\n");
-            printf("[CRYPTO] Verifying HMAC-SHA256 MAC using Authentication Update Key\n");
-            printf("[CRYPTO] MAC verification: SUCCESS\n");
-            printf("[CRYPTO] Update Keys confirmed by both parties\n");
-            return AProfile_handleUpdateKeyChangeResponse(self, asdu);
+            if (AProfile_handleUpdateKeyChangeResponse(self, asdu)) {
+                printf("[CRYPTO] MAC verification: SUCCESS\n");
+                printf("[CRYPTO] Update Keys confirmed by both parties\n");
+                return true;
+            } else {
+                printf("[CRYPTO] MAC verification: FAILED\n");
+                return false;
+            }
             
         case S_SR_NA_1:
             /* Server receives Session Request */
@@ -91,10 +95,14 @@ AProfile_handleCompliantMessage(AProfileContext self, CS101_ASDU asdu)
         case S_SS_NA_1:
             /* Client receives Session Response */
             printf("\n[HANDSHAKE STEP 6/8] Received Session Response (S_SS_NA_1)\n");
-            printf("[CRYPTO] Verifying HMAC-SHA256 MAC\n");
-            printf("[CRYPTO] MAC verification: SUCCESS\n");
-            printf("[SESSION] Session request accepted by server\n");
-            return AProfile_handleSessionResponse(self, asdu);
+            if (AProfile_handleSessionResponse(self, asdu)) {
+                printf("[CRYPTO] MAC verification: SUCCESS\n");
+                printf("[SESSION] Session request accepted by server\n");
+                return true;
+            } else {
+                printf("[CRYPTO] MAC verification: FAILED\n");
+                return false;
+            }
             
         case S_SK_NA_1:
             /* Server receives Session Key Change Request */
@@ -107,22 +115,26 @@ AProfile_handleCompliantMessage(AProfileContext self, CS101_ASDU asdu)
         case S_SQ_NA_1:
             /* Client receives Session Key Change Response */
             printf("\n[HANDSHAKE STEP 8/8] Received Session Key Change Response (S_SQ_NA_1)\n");
-            printf("[CRYPTO] Verifying HMAC-SHA256 MAC\n");
-            printf("[CRYPTO] MAC verification: SUCCESS\n");
-            printf("[CRYPTO] Server confirmed Session Keys\n");
-            printf("[CRYPTO] Initializing AES-256-GCM encryption contexts\n");
-            printf("[CRYPTO] Setting DSQ (Data Sequence Number) = 1\n");
-            printf("\n╔════════════════════════════════════════════════════════════╗\n");
-            printf("║   HANDSHAKE COMPLETE - SESSION ESTABLISHED                ║\n");
-            printf("╚════════════════════════════════════════════════════════════╝\n\n");
-            printf("[SECURITY] All 8 handshake steps completed successfully\n");
-            printf("[SECURITY] Secure session established with:\n");
-            printf("[SECURITY]   - Two-level key hierarchy (Update Keys → Session Keys)\n");
-            printf("[SECURITY]   - Separate keys for Control and Monitor directions\n");
-            printf("[SECURITY]   - AES-256-GCM encryption ready\n");
-            printf("[SECURITY]   - HMAC-SHA256 authentication ready\n");
-            printf("[SECURITY] Ready for secure ASDU/APDU exchange\n\n");
-            return AProfile_handleSessionKeyChangeResponse(self, asdu);
+            if (AProfile_handleSessionKeyChangeResponse(self, asdu)) {
+                printf("[CRYPTO] MAC verification: SUCCESS\n");
+                printf("[CRYPTO] Server confirmed Session Keys\n");
+                printf("[CRYPTO] Initializing AES-256-GCM encryption contexts\n");
+                printf("[CRYPTO] Setting DSQ (Data Sequence Number) = 1\n");
+                printf("\n╔════════════════════════════════════════════════════════════╗\n");
+                printf("║   HANDSHAKE COMPLETE - SESSION ESTABLISHED                ║\n");
+                printf("╚════════════════════════════════════════════════════════════╝\n\n");
+                printf("[SECURITY] All 8 handshake steps completed successfully\n");
+                printf("[SECURITY] Secure session established with:\n");
+                printf("[SECURITY]   - Two-level key hierarchy (Update Keys → Session Keys)\n");
+                printf("[SECURITY]   - Separate keys for Control and Monitor directions\n");
+                printf("[SECURITY]   - AES-256-GCM encryption ready\n");
+                printf("[SECURITY]   - HMAC-SHA256 authentication ready\n");
+                printf("[SECURITY] Ready for secure ASDU/APDU exchange\n\n");
+                return true;
+            } else {
+                printf("[CRYPTO] MAC verification: FAILED\n");
+                return false;
+            }
             
         case S_AC_NA_1:
             printf("APROFILE: Received Association Confirm (S_AC_NA_1)\n");

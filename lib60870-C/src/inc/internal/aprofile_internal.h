@@ -34,6 +34,7 @@ extern "C" {}
 #include "mbedtls/ctr_drbg.h"
 #include "mbedtls/hkdf.h"
 #include "mbedtls/entropy.h"
+#include "mbedtls/nist_kw.h"
 
 #include "iec60870_common.h"
 
@@ -62,12 +63,24 @@ typedef enum {
     APROFILE_STATE_ESTABLISHED = 7
 } AProfileState;
 
+typedef enum {
+    APROFILE_EVENT_CONNECTED,
+    APROFILE_EVENT_DISCONNECTED,
+    APROFILE_EVENT_KEY_EXCHANGE_STARTED,
+    APROFILE_EVENT_KEY_EXCHANGE_COMPLETE,
+    APROFILE_EVENT_KEY_EXCHANGE_TIMEOUT,
+    APROFILE_EVENT_ERROR
+} AProfileEvent;
+
+typedef void (*AProfileEventHandler)(void* parameter, AProfileEvent event);
+
 /* Placeholder for security state */
 struct sAProfileContext
 {
     bool security_active;  /* Security session active flag */
     bool isControllingStation; /* true for controlling station (CS104_Connection/client), false for controlled station (MasterConnection/server) - IEC 62351-5:2023 */
     /* Note: DSQ_local and DSQ_remote moved below with other IEC 62351-5:2023 variables */
+    bool sessionKeysGenerated; 
 
     void* connection; /* Reference to the CS104_Connection or MasterConnection */
     AProfile_SendAsduCallback sendAsdu;
@@ -77,12 +90,17 @@ struct sAProfileContext
 
     AProfileAlgorithm selectedAlgorithm;
 
+    AProfileEventHandler eventHandler;          ///< Callback for security events
+    void* eventHandlerParameter;               ///< User data passed to event handler
+    uint64_t lastActivityTime; 
+
     mbedtls_ecdh_context ecdh;
     mbedtls_entropy_context entropy;
     mbedtls_ctr_drbg_context ctr_drbg;
     mbedtls_gcm_context gcm_encrypt;
     mbedtls_gcm_context gcm_decrypt;
-
+    mbedtls_nist_kw_context kw_ctx;
+    
     uint8_t localPublicKey[65];
     int localPublicKeyLen;
 
@@ -91,6 +109,9 @@ struct sAProfileContext
     uint8_t K_UA[32];      /* K_UA: Authentication Update Key (256-bit) - Clause 8.3.10 */
     uint8_t K_SC[32];      /* K_SC: Control Direction Session Key (256-bit) - Clause 8.4.2 */
     uint8_t K_SM[32];      /* K_SM: Monitor Direction Session Key (256-bit) - Clause 8.4.2 */
+    uint8_t sharedSecret[32];   /* ECDH shared secret */
+    size_t sharedSecretLen;      /* Length of shared secret */
+    uint8_t updateKey[32];       /* Derived update key */
     
     /* Random Data for HKDF Salt - IEC 62351-5:2023 Clause 8.3.10.4 */
     uint8_t R_C[32];       /* R_C: Controlling Station Random (32 bytes) */
@@ -155,6 +176,13 @@ struct sAProfileContext
 #endif
 };
 
+/**
+ * @brief Security profile event types
+ * 
+ * These events are reported through the AProfileEventHandler callback to notify
+ * the application of important security state changes.
+ */
+
 void AProfile_setAlgorithm(AProfileContext self, AProfileAlgorithm alg);
 
 /* IEC 62351-5:2023 Integration Functions */
@@ -170,9 +198,26 @@ bool AProfile_decryptASdu(AProfileContext self, const uint8_t* ciphertext, size_
                           uint8_t* plaintext, size_t* plaintext_len);
                           
 bool AProfile_sendUpdateKeyChangeRequest(AProfileContext self);
+
+/**
+ * @brief Derive Update Keys using HKDF as per IEC 62351-5:2023 Clause 8.3.10
+ * 
+ * @param self AProfile context
+ * @return true on success, false on failure
+ */
+bool AProfile_deriveUpdateKeys(AProfileContext self);
 bool AProfile_sendSessionRequest(AProfileContext self);
 bool AProfile_sendSessionKeyChangeRequest(AProfileContext self);
 bool AProfile_startCompliantHandshake(AProfileContext self);
+
+/**
+ * @brief Handle IEC 62351-5:2023 compliant security messages
+ * 
+ * @param self AProfile context
+ * @param asdu The received ASDU
+ * @return true if handled successfully, false otherwise
+ */
+bool AProfile_handleCompliantMessage(AProfileContext self, CS101_ASDU asdu);
 
 #else
 

@@ -22,14 +22,27 @@
 #include "cs104_frame.h"
 
 struct sAProfileContext {
-    int dummy;
-};
+    AProfileState state;
+    uint64_t lastActivityTime;  // Timestamp of last activity for timeout handling
+    
+    // Event handling
+    AProfileEventHandler eventHandler;
+    void* eventHandlerParameter;
+    };
 
 AProfileContext
 AProfile_create(void)
 {
 #if (CONFIG_CS104_APROFILE == 1)
-    return (AProfileContext)GLOBAL_CALLOC(1, sizeof(struct sAProfileContext));
+     AProfileContext self = (AProfileContext)GLOBAL_CALLOC(1, sizeof(struct sAProfileContext));
+    if (self) {
+        // Initialize state
+        self->state = APROFILE_STATE_IDLE;
+        self->lastActivityTime = 0;
+        self->eventHandler = NULL;
+        self->eventHandlerParameter = NULL;
+    }
+    return self;
 #else
     return NULL;
 #endif
@@ -77,3 +90,11 @@ AProfile_handleInPdu(AProfileContext ctx, const uint8_t* in, int inSize,
     return APROFILE_PLAINTEXT;
 }
 
+void
+AProfile_setEventHandler(AProfileContext self, AProfileEventHandler handler, void* parameter)
+{
+    if (self) {
+        self->eventHandler = handler;
+        self->eventHandlerParameter = parameter;
+    }
+}

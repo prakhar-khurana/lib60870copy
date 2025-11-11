@@ -1616,9 +1616,28 @@ CS104_Connection_sendASDU(CS104_Connection self, CS101_ASDU asdu)
     CS101_ASDU_encode(asdu, frame);
 
 #if (CONFIG_CS104_APROFILE == 1)
-    /* For security control messages (S_RP_NA_1 = key exchange), send directly without locking
-     * to avoid deadlock when called from receive thread */
-    if (CS101_ASDU_getTypeID(asdu) == S_RP_NA_1) {
+    /* For IEC 62351-5:2023 handshake control messages, send directly without locking
+     * to avoid deadlock when called from receive thread during handshake.
+     * These are the 8-step handshake messages that must be sent immediately:
+     * - S_AR_NA_1 (140): Association Request (Step 1)
+     * - S_AS_NA_1 (141): Association Response (Step 2)
+     * - S_UK_NA_1 (142): Update Key Change Request (Step 3)
+     * - S_UR_NA_1 (146): Update Key Change Response (Step 4)
+     * - S_SR_NA_1 (214): Session Request (Step 5)
+     * - S_SS_NA_1 (215): Session Response (Step 6)
+     * - S_SK_NA_1 (216): Session Key Change Request (Step 7)
+     * - S_SQ_NA_1 (217): Session Key Change Response (Step 8)
+     * 
+     * Note: S_RP_NA_1 (136) is legacy and should not be used in compliant handshake.
+     * Secure data ASDUs (wrapped in S_RP_NA_1 or S_SE_NA_1) go through normal path.
+     */
+    TypeID typeId = CS101_ASDU_getTypeID(asdu);
+    if (typeId == S_AR_NA_1 || typeId == S_AS_NA_1 || 
+        typeId == S_UK_NA_1 || typeId == S_UR_NA_1 ||
+        typeId == S_SR_NA_1 || typeId == S_SS_NA_1 ||
+        typeId == S_SK_NA_1 || typeId == S_SQ_NA_1) {
+        printf("[CLIENT] Sending handshake control message (Type=%d) directly...\n", typeId);
+        fflush(stdout);
         /* Check running state directly without semaphore to avoid deadlock */
         if (self->running) {
             sendIMessageAndUpdateSentASDUs(self, frame);

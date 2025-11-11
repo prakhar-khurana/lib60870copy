@@ -265,7 +265,12 @@ CS101_ASDU_addInformationObject(CS101_ASDU self, InformationObject io)
 
     if (numberOfElements == 0)
     {
-        self->asdu[0] = (uint8_t) InformationObject_getType(io);
+        /* Only set ASDU Type ID from Information Object if it hasn't been explicitly set */
+        /* This allows ASDU Type IDs like S_AR_NA_1 (140) to be preserved even when using */
+        /* Information Objects like SecurityPublicKey which have Type ID S_RP_NA_1 (136) */
+        if (self->asdu[0] == 0) {
+            self->asdu[0] = (uint8_t) InformationObject_getType(io);
+        }
 
         encoded = InformationObject_encode(io, (Frame) &asduFrame, self->parameters, false);
     }
@@ -1240,6 +1245,41 @@ CS101_ASDU_getElementEx(CS101_ASDU self, InformationObject io, int index)
         retVal = (InformationObject) QueryLog_getFromBuffer((QueryLog) io, self->parameters, self->payload, self->payloadSize, 0);
 
         break;
+
+    case S_AR_NA_1: /* 140 - IEC 62351-5 Association Request */
+    case S_AS_NA_1: /* 141 - IEC 62351-5 Association Response */
+    case S_UK_NA_1: /* 142 - IEC 62351-5 Update Key Change Request */
+    case S_UR_NA_1: /* 146 - IEC 62351-5 Update Key Change Response */
+    case S_SR_NA_1: /* 214 - IEC 62351-5 Session Request */
+    case S_SS_NA_1: /* 215 - IEC 62351-5 Session Response */
+    case S_SK_NA_1: /* 216 - IEC 62351-5 Session Key Change Request */
+    case S_SQ_NA_1: /* 217 - IEC 62351-5 Session Key Change Response */
+    {
+        /* These ASDUs contain a non-standard sequence of variable-length IOs */
+        /* We need to manually traverse the payload to find the indexed element */
+        int offset = 0;
+        for (int i = 0; i < index; i++) {
+            /* Check if there is enough space for IOA and length byte */
+            if (offset + self->parameters->sizeOfIOA + 1 > self->payloadSize)
+                return NULL;
+
+            /* Get length of the current IO to skip it */
+            int ioLength = self->payload[offset + self->parameters->sizeOfIOA];
+            int totalIoSize = self->parameters->sizeOfIOA + 1 + ioLength;
+
+            offset += totalIoSize;
+        }
+
+        /* Check if the start of the requested IO is within bounds */
+        if (offset >= self->payloadSize)
+            return NULL;
+
+        /* The IOs inside are of type SecurityPublicKey */
+        retVal = (InformationObject)SecurityPublicKey_getFromBuffer(
+            (SecurityPublicKey)io, self->parameters, self->payload, self->payloadSize, offset, false);
+
+        break;
+    }
 
     case S_RP_NA_1: /* 136 - A-profile key exchange */
 

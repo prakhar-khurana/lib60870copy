@@ -1203,6 +1203,8 @@ struct sSecurityPublicKey
     uint8_t keyValue[2048];
 };
 
+#define SECURITY_PUBLIC_KEY_TYPE 41  // Standard type ID
+
 struct sSecurityEncryptedData
 {
     int objectAddress;

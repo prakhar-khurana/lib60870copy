@@ -23,6 +23,7 @@ set (lib_common_SRCS
 ./iec60870/security/62351-5/aprofile_62351_5_handlers.c
 ./iec60870/security/62351-5/aprofile_codec.c
 ./iec60870/security/62351-5/aprofile_integration.c
+./common/security_public_key.c
 ./iec60870/link_layer/buffer_frame.c
 ./iec60870/link_layer/link_layer.c
 ./iec60870/link_layer/serial_transceiver_ft_1_2.c
@@ -203,6 +204,13 @@ target_include_directories(lib60870 PUBLIC
     ${PROJECT_BINARY_DIR}
     ${CMAKE_BINARY_DIR}/dependencies/mbedtls-2.28.8/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../liboqs/install/include
+)
+
+include_directories(
+    ${PROJECT_SOURCE_DIR}/src/inc
+    ${PROJECT_SOURCE_DIR}/src/inc/internal
+    ${PROJECT_SOURCE_DIR}/src/iec60870/security/62351-5
+    ${MBEDTLS_INCLUDE_DIR}
 )
 
 IF(UNIX)

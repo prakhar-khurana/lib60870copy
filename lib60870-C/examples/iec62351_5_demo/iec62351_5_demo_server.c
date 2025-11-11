@@ -24,7 +24,7 @@ void sigint_handler(int signalId)
 }
 
 static bool
-asduReceivedHandler(void* parameter, int address, CS101_ASDU asdu)
+asduReceivedHandler(void* parameter, IMasterConnection connection, CS101_ASDU asdu)
 {
     if (isFirstASDU) {
         printf("\n\n[SECURITY] The connection establishment works perfectly\n");
@@ -37,17 +37,23 @@ asduReceivedHandler(void* parameter, int address, CS101_ASDU asdu)
     printf("[ASDU] Received type: %d\n", typeId);
     
     printf("SERVER: Received ASDU - Type=%d, COT=%d, CA=%d\n",
-           CS101_ASDU_getTypeID(asdu),
+           typeId,
            CS101_ASDU_getCOT(asdu),
            CS101_ASDU_getCA(asdu));
     
+    /* Note: Security-related ASDUs (S_AR_NA_1 through S_SQ_NA_1) are automatically
+     * handled by AProfile_handleInPdu() in the library before reaching this handler.
+     * This handler only receives application data ASDUs after security processing. */
+    
+    // Handle application ASDUs here
     return true;
 }
 
 static bool
 connectionRequestHandler(void* parameter, const char* ipAddress)
 {
-    printf("SERVER: New connection request from %s\n", ipAddress);
+    printf("[SERVER] New connection request from %s\n", ipAddress);
+    /* Security context will be created automatically by MasterConnection_init */
     return true; /* Accept all connections */
 }
 

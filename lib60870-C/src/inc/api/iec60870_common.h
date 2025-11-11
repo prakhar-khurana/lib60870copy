@@ -216,7 +216,7 @@ typedef enum {
     S_UP_CA_1 = 149, /* Update Parameter Acknowledge */
     S_UQ_CA_1 = 150, /* User Query Acknowledge */
     S_AB_NA_1 = 151, /* Association Abort */
-    S_SE_NA_1 = 82,  /* Session Establishment (moved from end) */
+    S_SE_NA_1 = 138, /* Secure Encrypted Data - IEC 62351-5:2023 Table 28 */
     S_SR_NA_1 = 214, /* Session Request */
     S_SS_NA_1 = 215, /* Session Response */
     S_SK_NA_1 = 216, /* Session Key Change Request */

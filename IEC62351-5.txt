@@ -1,0 +1,396 @@
+
+1) The TCP connection establishment doesnt follow the 62351-5 recommended manner of 8 step handshake.
+2) There was no initiation for the Association request nor did it happen.
+3) I did not see any ECDH key exchange take place from either of the powershell terminals.
+4) HKDF, if generated even, wasnt shown to the user i.e. the developer here. Nor were the HKDF shared secret values visible to client terminal or server terminal.
+5) There was session key establishment in the entire process. 
+6) The data that was being transmitted was not encrypted at all.
+
+
+this is what the association session seems like:
+The Station Association procedure is performed to establish an association between controlling station and controlled station, to identify the communication link between the two stations, the Role of the controlling station, and to generate the associated Update Keys. Each device shall maintain a unique set of Update Keys for each association established. This procedure is performed during commissioning (installation of controlling station and/or controlled station) or when it is requested by the Central Authority each time a new certificate is provisioned to the controlling station or to the controlled station. Depending on the organization’s security policy, the Central Authority or authorized personnel may also require the controlling station to initiate the Station Association procedure, even on regular basis to renew the Update Keys periodically. The method to solicit the controlling station to initiate the Station Association procedure is outside the scope of this document. Additional conditions to initiate the Station Association procedure may be specified in the affected protocol referencing standards. This procedure implements the Elliptic Curve Diffie-Hellmann (ECDH) exchange using public key certificates and a Hash Key Derivation Function (HKDF) on the information exchanged to generate the Update Keys (according to RFC 5869 and RFC 7748).
+
+
+Instead of generating new certs you can use the downloaded certs in C:\Users\z005653n\Desktop\lib60870\lib60870-C\tests
+
+
+the controlling station sends the Association Request message. The Association Request message shall elicit an Association Response message from the controlled station. After sending the Association Request message, the controlling station shall start the Reply Timer to verify that the Association Response message is received from the controlled station within the expected time. If the Reply Timer expires (Reply Timeout), the controlling station shall execute the actions as indicated:
+
+> A solicited controlling station sends an Association Request and moves to Wait for Association Response.
+
+> A valid Association Response triggers Update Key generation and an Update Key Change Request.
+
+> A valid Update Key Change Response marks the new keys as valid and moves to the session key phase.
+
+> Invalid responses due to bad parameters, failed authentication, or invalid certificates cause a return to the Key Management Idle state.
+
+> A single Reply Timeout triggers a re-transmission of the last request.
+
+> Reaching Max Reply Timeouts or detecting a communication failure aborts the process and returns to Idle.
+
+> While in the Idle state, a certificate revocation (for either station) marks the existing Update Keys as invalid.
+
+
+The controlled station (only) shall send the Association Response message each time a valid
+Association Request message is received from the controlling station.
+The Association Response message provides the controlled station’s certificate and the
+associated random data to the controlling station, the controlling station must use this
+information to authenticate the subsequent Update Key Change Request message.
+After sending the Association Response message, the controlled station shall start the Request
+Timer to verify that the subsequent Update Key Change Request message is received from the
+controlling station within the expected time. If the Request Timer expires (Request Timeout),
+the controlled station shall execute the actions as indicated:
+
+> The controlled station starts in the Association Idle state, awaiting requests.
+
+> Upon receiving a Valid Association Request, it sends an Association Response with random data.
+
+> The station then moves to the Wait for Update Key Change Request state and starts a timer.
+
+> Receiving a Valid Update Key Change Request, it generates new Update Keys and sends an Update Key Change Response.
+
+> After sending the key response, the station returns to the Association Idle state.
+
+> Invalid requests due to bad certificates, parameter errors, or unsupported algorithms are discarded.
+
+> A Request Timeout or communication failure aborts the association attempt, returning the station to Idle.
+
+> While in the Idle state, a certificate revocation for either station marks the Update Keys as invalid.
+
+
+Structure of Association Request:
++-------------------------------------+---------------------------------------------------+
+| Value                                               | AIM = Controlling station association ID          |
++-------------------------------------+---------------------------------------------------+
+| Value                                               |                                                                            |
++-------------------------------------+---------------------------------------------------+
+| Value                                               | AIS = Controlled station association ID             |
++-------------------------------------+---------------------------------------------------+
+| Value                                               |                                                                            |
++-------------------------------------+---------------------------------------------------+
+| Value                                               | PRI = Protocol Information                                |
++-------------------------------------+---------------------------------------------------+
+| Value                                               |                                                                            |
++-------------------------------------+---------------------------------------------------+
+| Value                                               | CDL = Controlling station certificate data length |
++-------------------------------------+---------------------------------------------------+
+| Value                                               |                                                                            |
++-------------------------------------+---------------------------------------------------+
+| Number of octets specified in CDL | CDC = Controlling station certificate data        |
++-------------------------------------+---------------------------------------------------+
+
+
+
+Structure of Association response:
++-------------------------------------+---------------------------------------------------+
+| Value                                               | AIM = Controlling station association ID          |
++-------------------------------------+---------------------------------------------------+
+| Value                                               |                                                                            |
++-------------------------------------+---------------------------------------------------+
+| Value                                               | AIS = Controlled station association ID             |
++-------------------------------------+---------------------------------------------------+
+| Value                                               |                                                                            |
++-------------------------------------+---------------------------------------------------+
+| Value                                               | CDL = Controlled station certificate data length |
++-------------------------------------+---------------------------------------------------+
+| Value                                               |                                                                             |
++-------------------------------------+---------------------------------------------------+
+| Value                                               | CGL = Controlled station random data length   |
++-------------------------------------+---------------------------------------------------+
+| Number of octets specified in CDL   | CDC = Controlled station certificate data        |
++-------------------------------------+---------------------------------------------------+
+| Number of octets specified in CGL   | CGD = Controlled station random data           |
++-------------------------------------+---------------------------------------------------+
+
+
+Only the controlling station shall send Update Key Change Request messages. The Update Key
+Change Request message provides information used by the controlled Station to calculate and
+verify the Update Keys.
+After sending the Update Key Change Request message, the controlling station shall start the
+Reply Timer to verify that the Update Key Change Response message is received from the
+controlled station within the expected time. Otherwise the aftermath is the same as mentioned above.
+
++--------------------------------------------------------------------------------------------------------+
+| Value                                                        | AIM = Controlling station association ID|
++--------------------------------------------------------------------------------------------------------+
+| Value                                                        |                                         |
++--------------------------------------------------------------------------------------------------------+
+| Value                                                        | AIS = Controlled station association ID |
++--------------------------------------------------------------------------------------------------------+
+| Value                                                        |                                         |
++--------------------------------------------------------------------------------------------------------+
+| Enumerated value                                             | KWA = Session Key wrap algorithm        |
++--------------------------------------------------------------------------------------------------------+
+| Enumerated value                                             | MAL = MAC algorithm                     |
++------------------------------------------------------------------------------------------------------------+
+| Value                                                        | CGL = Controlling station random data length|
++--------------------------------------------------------------------------------------------------------+
+| Number of octets specified in CCL                            | CGD = Controlling station random data   |
++--------------------------------------------------------------------------------------------------------+
+| Number of octets specified by the MAC                        |                                         |
+algorithm (MAL) selected in this message, defined in 8.3.5.4.5 | MAC = Message authentication code       |              
++--------------------------------------------------------------------------------------------------------+
+
+Only the controlled station shall send Update Key Change Response message. Exchanging this
+message ensures that both controlling station and controlled station agree on the following
+information:
+– the identity of both the controlling station and the controlled station,
+– the new Update Keys,
+– the controlling Station Association ID (AIM) that the controlling station will associate to these
+Update Keys in all subsequent authentications.
+– the controlled Station Association ID (AIS) that the controlled station will associate to these
+Update Keys in all subsequent authentications.
+– The Role of the controlling station on this controlled station (if Central Authority and RBAC
+are supported)
+
+The controlling station derives the Update Keys after receiving the Association Response
+message from the controlled station and generating the random data for the Update key Change
+Request message next to be sent. The controlled station derives the Update Keys when it
+receives an Update Key Change Request message.
+The size of the Update Keys is 256 bits (32 octets) because the algorithms selected in KWA
+and MAL fields in the Update Key Change Request message require 256 bits sized keys. 
+
++-------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------+
+| Value                                                                                                                               | AIM = Controlling station association ID    |
++-------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------+
+| Value                                                                                                                               |                                             |
++-------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------+
+| Value                                                                                                                               | AIS = Controlled station association ID     |
++-------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------+
+| Value                                                                                                                               |                                             |
++-------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------+
+| Number of octets specified by the MAC algorithm (MAL) selected in the valid Update Key Change Request most recently received, defined in 8.3.5.4.5 | MAC = Message authentication code           |
++-------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------+
+
+
+Controlling Station         Controlled Station
+          |                            |
+          |     Association Request    |
+          |--------------------------->|
+          |                            |
+          |    Association Response    |
+          |<---------------------------|
+          |                            |
+          | Update Key Change Request  |
+          |--------------------------->|
+          |                            |
+          | Update Key Change Response |
+          |<---------------------------|
+          |                            |
+          |       Session Request      |
+          |--------------------------->|
+          |                            |
+          |      Session Response      |
+          |<---------------------------|
+          |                            |
+          | Session Key Change Request |
+          |--------------------------->|
+          |                            |
+          | Session Key Change Response|
+          |<---------------------------|
+          |                            |
+          |   Secure protocol requests |
+          |--------------------------->|
+          |                            |
+          |  Secure protocol responses |
+          |<---------------------------|
+          |             ...            |
+          |             ...            |
+
+
+
+
+Session Key Wrap Algo:
+Using this field, the controlling station shall indicate to the controlled station the selected
+algorithm used to encrypt/decrypt the Session Keys during the Session Key Change procedure.
+
+MAC algo:
+Using this field, the controlling station shall indicate to the controlled station the selected
+algorithm to calculate MAC values and its resulting length in the authenticated messages
+exchanged in this authentication session (Update Key Change Request, Update Key Change
+Response) as well as in the authenticated messages exchanged in all subsequent Session Key
+Change procedures performed (Session Key Change Request, Session Key Change Response).
+
+
+Message Authentication Code:
+The controlling station shall use this field to authenticate the data included in Update Key Change Request message being transmitted.
+This value shall be calculated using the MAC algorithm selected in this message using the corresponding Authentication Update Key generated.
+
++-------------------------------+----------------------------------------------------------------------------------------------------+--------------------------+--------------------------+
+| Data                          | Description                                                                                        | Described in             | Source                   |
++-------------------------------+----------------------------------------------------------------------------------------------------+--------------------------+--------------------------+
+| Controlled Station            | The random data provided by the controlled station in the Association Response message most recently | Subclause 8.3.5.3.7      | Association Response     |
+| Random Data                   | received.                                                                                          |                          |                          |
++-------------------------------+----------------------------------------------------------------------------------------------------+--------------------------+--------------------------+
+| Update Key Change Request     | The entire Update Key Change Request message being transmitted up to and including CGD (excluding   | Subclause 8.3.5.4        | Update Key Change        |
+| values                        | the MAC field).                                                                                    |                          | Request                  |
++-------------------------------+----------------------------------------------------------------------------------------------------+--------------------------+--------------------------+
+| Padding data                  | Additional padding data required by the MAC algorithm.                                             | Algorithm specification. | Required by algorithm.   |
++-------------------------------+----------------------------------------------------------------------------------------------------+--------------------------+--------------------------+
+
+
+
+SESSION KEY EXCHANGE:
+This procedure shall be performed to initialize or renew the Session keys for an Association.
+Each device shall maintain a unique set of Session Keys for each controlling station/controlled
+station association established during the Station Association procedure.
+This procedure can be performed only if both controlling and controlled stations own the Update
+Keys corresponding to the Association ID.
++---------------------------------------------------------------------------------------------------------------------------------+-------------------------------------------+
+| Value                                                                                                                           | AIM = Controlling station association ID  |
++---------------------------------------------------------------------------------------------------------------------------------+-------------------------------------------+
+| Value                                                                                                                           |                                           |
++---------------------------------------------------------------------------------------------------------------------------------+-------------------------------------------+
+| Value                                                                                                                           | AIS = Controlled station association ID   |
++---------------------------------------------------------------------------------------------------------------------------------+-------------------------------------------+
+| Value                                                                                                                           |                                           |
++---------------------------------------------------------------------------------------------------------------------------------+-------------------------------------------+
+| Enumerated value                                                                                                                | DPA = Data protection algorithm           |
++---------------------------------------------------------------------------------------------------------------------------------+-------------------------------------------+
+| Value                                                                                                                           | WKL = Wrapped key data length             |
++---------------------------------------------------------------------------------------------------------------------------------+-------------------------------------------+
+| Value                                                                                                                           |                                           |
++---------------------------------------------------------------------------------------------------------------------------------+-------------------------------------------+
+| Number of octets specified in WKL                                                                                               | WKD = Wrapped key data                    |
++---------------------------------------------------------------------------------------------------------------------------------+-------------------------------------------+
+| Number of octets specified by the MAC algorithm (MAL) selected in the Update Key Change Request message, described in 8.3.5.4.5    | MAC = Message authentication code         |
++---------------------------------------------------------------------------------------------------------------------------------+-------------------------------------------+
+
+
+The controlling station (only) shall send the Session Request message. Through this message
+the controlling station initiates the Session Key Change procedure. The Session Request
+message shall elicit a Session Response message from the controlled station.
+After sending the Session Request message, the controlling station shall start the Reply Timer
+to verify that the Session Response message is received from the controlled station within the
+expected time.
+
++-------------------------------------+---------------------------------------------------+
+| Value                               | AIM = Controlling station association ID          |
++-------------------------------------+---------------------------------------------------+
+| Value                               |                                                   |
++-------------------------------------+---------------------------------------------------+
+| Value                               | AIS = Controlled station association ID           |
++-------------------------------------+---------------------------------------------------+
+| Value                               |                                                   |
++-------------------------------------+---------------------------------------------------+
+| Value                               | PRI = Protocol Information                        |
++-------------------------------------+---------------------------------------------------+
+| Value                               |                                                   |
++-------------------------------------+---------------------------------------------------+
+| Value                               | CGL = Controlling station random data length      |
++-------------------------------------+---------------------------------------------------+
+| Number of octets specified in CGL   | CGD = Controlling station random data             |
++-------------------------------------+---------------------------------------------------+
+
+SESSION RESPONSE MESSAGE:
+The controlled station (only) shall send the Session Response message each time a Session
+Request message is received from the controlling station.
+The Session Response provides random data that the controlling station must use to
+authenticate the subsequent Session Key Change Request message.
+After sending the Session Response message, the controlled station shall start the Request
+Timer to verify that the subsequent Session Key Change Request message is received from the
+controlling station within the expected time.
+The Request Timer shall be stopped when a valid Session Key Change Request message is
+received.
++---------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------+
+| Value                                                                                                                           | AIM = Controlling station association ID    |
++---------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------+
+| Value                                                                                                                           |                                             |
++---------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------+
+| Value                                                                                                                           | AIS = Controlled station association ID     |
++---------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------+
+| Value                                                                                                                           |                                             |
++---------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------+
+| Value                                                                                                                           | CGL = Controlled station random data length |
++---------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------+
+| Number of octets specified in CGD                                                                                               | CGD = Controlled station random data        |
++---------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------+
+| Number of octets specified by the MAC algorithm (MAL) selected in the Update Key Change Request message, defined in 8.3.5.4.5       | MAC = Message authentication code           |
++---------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------+
+
+
+WRAPPED KEY:
+This value shall be the length of the data produced by the key wrap algorithm. Note that AES-256 algorithm used to wrap the Session Keys generates 64 octets output at minimum with a session key length of 256 bits.  
+
+
+Secure Data Exchange:
+The Secure Data Exchange is the normal operations procedure to authenticate and exchange
+application data between stations. It can be performed only if the Session Keys corresponding
+to the Association ID are valid in both controlling and controlled stations (after the Session Key
+Change procedure was successfully performed for that Association ID). Both controlling and
+controlled stations use the same operation and same message to authenticate and exchange
+application data.
+
++-------------------------------------------------------------------------------------+-------------------------------------------+
+| Value                                                                               | AIM = Controlling station association ID  |
++-------------------------------------------------------------------------------------+-------------------------------------------+
+| Value                                                                               |                                           |
++-------------------------------------------------------------------------------------+-------------------------------------------+
+| Value                                                                               | AIS = Controlled station association ID   |
++-------------------------------------------------------------------------------------+-------------------------------------------+
+| Value                                                                               |                                           |
++-------------------------------------------------------------------------------------+-------------------------------------------+
+| Value                                                                               |                                           |
++-------------------------------------------------------------------------------------+-------------------------------------------+
+| Value                                                                               | DSQ = Data Sequence Number                |
++-------------------------------------------------------------------------------------+-------------------------------------------+
+| Value                                                                               |                                           |
++-------------------------------------------------------------------------------------+-------------------------------------------+
+| Value                                                                               |                                           |
++-------------------------------------------------------------------------------------+-------------------------------------------+
+| Value                                                                               | ADL = Application Data Length             |
++-------------------------------------------------------------------------------------+-------------------------------------------+
+| Value                                                                               |                                           |
++-------------------------------------------------------------------------------------+-------------------------------------------+
+| Data structure containing authenticated application data, depending by the algorithm used | SDP = Secure Data Payload               |
++-------------------------------------------------------------------------------------+-------------------------------------------+
+
+
+Data Sequence Number:
+Each station shall maintain a Data Sequence Number according to the following rules.
+a) The device shall use a separate DSQ in each direction, for each Association ID.
+b) The DSQ value in the first Secure Data message transmitted by either device after
+successful Session Key initialization must be 1 (i.e. after the controlled station received an
+authentic Session Key Change Request or the controlling station received an authentic
+Session Key Change Response)
+c) The DSQ shall be incremented by one in each new Secure Data message transmitted.
+d) The receiver of a Secure Data message shall discard the message if the DSQ is less than
+the next expected value. The expected value shall be:
+– the value in the last Secure Data message in that direction plus one or
+– 1 (one) immediately after a successfully executed Session Key Change procedure.
+e) The receiver of a Secure Data message shall consider the DSQ value received only if the
+message is correctly authenticated.
+f) The DSQ shall never be zero, the controlling station shall re-initialize the session keys
+before the DSQ would roll over from 4294967295 to 0. 
+
+
+Application Data Length This value shall specify the length in octets of the entire Application Service Data Unit (ASDU) to be authenticated and transmitted, contained in the Secure Data Payload that follows.
+
+
+Data structure containing the ASDU to be transmitted and authentication information. The structure of the Secure Data Payload is determined by the Data Protection Algorithm (DPA) selected by the controlling station in the successful Session Key Change procedure most recently executed.
+
+Secure Data Payload using MAC algorithm
+If a MAC algorithm is selected to authenticate application data, the structure of the Secure Data Payload is illustrated in Table 30.
+
+Table 30 – Secure Data Payload using MAC algorithm
+===========================================================================
+Defined by the referencing standard |                                      |
+Number of octets specified in ADL   |ASDU = Application Service Data Unit  |
+===========================================================================         
+Number of octets specified by the   |                                      |
+MAC algorithm selected in DPA       |  MAC = Message Authentication Code   |
+during the last Session Key Change  |                                      |
+procedure                           |                                      |
+============================================================================
+
+The Application Service Data Unit is the entire ASDU to be authenticated and transmitted, not including data link layer or APCI information.
+
+ASDU:= OS8i[1..8i]; i:=ADL
+
+The Controlling station shall use the current Control Direction Session Key to calculate the MAC
+value in the messages to be transmitted, and the current Monitor Direction Session Key to verify
+the MAC value in the messages received.
+
+The Controlled station shall use the current Monitoring Direction Session Key to calculate the
+MAC value in the messages to be transmitted, and the and the current Control Direction Session
+Key to verify the MAC value in the messages received.

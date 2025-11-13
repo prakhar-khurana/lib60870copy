@@ -327,6 +327,5 @@ main(int argc, char** argv)
 
 exit_program:
     CS104_Slave_destroy(slave);
-
     Thread_sleep(500);
 }

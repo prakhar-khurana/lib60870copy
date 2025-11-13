@@ -3,11 +3,32 @@
 
 /* System support */
 #define MBEDTLS_HAVE_ASM
+
+#ifndef MBEDTLS_HAVE_TIME
 #define MBEDTLS_HAVE_TIME
+#endif
+
+#ifndef MBEDTLS_HAVE_TIME_DATE
 #define MBEDTLS_HAVE_TIME_DATE
+#endif
+
 #define MBEDTLS_NO_UDBL_DIVISION
+
+#ifndef MBEDTLS_PLATFORM_C
 #define MBEDTLS_PLATFORM_C
+#endif
+
 #define MBEDTLS_DEBUG_C
+
+/* Windows-specific: Suppress CRT security warnings */
+#ifdef _MSC_VER
+#ifndef _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+#ifndef MBEDTLS_PLATFORM_MEMORY
+#define MBEDTLS_PLATFORM_MEMORY
+#endif
+#endif
 
 /* mbed TLS feature support */
 #define MBEDTLS_CIPHER_MODE_CBC
@@ -27,15 +48,25 @@
 #define MBEDTLS_TLS_DEFAULT_ALLOW_SHA1_IN_CERTIFICATES
 
 /* mbed TLS modules */
+#ifndef MBEDTLS_GCM_C
 #define MBEDTLS_GCM_C
+#endif
+
 #define MBEDTLS_AES_C
 #define MBEDTLS_ASN1_PARSE_C
 #define MBEDTLS_ASN1_WRITE_C
 #define MBEDTLS_BIGNUM_C
 #define MBEDTLS_CIPHER_C
+
+#ifndef MBEDTLS_CTR_DRBG_C
 #define MBEDTLS_CTR_DRBG_C
+#endif
+
 /* #define MBEDTLS_DES_C */
+
+#ifndef MBEDTLS_ENTROPY_C
 #define MBEDTLS_ENTROPY_C
+#endif
 #define MBEDTLS_MD_C
 #define MBEDTLS_MD5_C
 #define MBEDTLS_NET_C
@@ -60,7 +91,12 @@
 #define MBEDTLS_ECDH_LEGACY_CONTEXT
 #define MBEDTLS_ECDSA_C
 #define MBEDTLS_ECP_DP_SECP256R1_ENABLED
+
+#ifndef MBEDTLS_HKDF_C
 #define MBEDTLS_HKDF_C
+#endif
+
+#define MBEDTLS_NIST_KW_C
 
 /* For test certificates */
 #define MBEDTLS_BASE64_C
@@ -71,7 +107,9 @@
 #define MBEDTLS_PKCS5_C
 
 /* For testing with compat.sh */
+#ifndef MBEDTLS_FS_IO
 #define MBEDTLS_FS_IO
+#endif
 
 #define MBEDTLS_X509_CHECK_KEY_USAGE
 #define MBEDTLS_X509_CHECK_EXTENDED_KEY_USAGE
@@ -81,6 +119,8 @@
 #define MBEDTLS_SSL_TICKET_C
 #define MBEDTLS_SSL_SESSION_TICKETS
 #define MBEDTLS_SSL_SERVER_NAME_INDICATION
+
+#undef MBEDTLS_THREADING_C
 
 #include "mbedtls/check_config.h"
 

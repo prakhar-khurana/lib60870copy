@@ -20,7 +20,6 @@
  */
 
 #ifdef _MSC_VER
-#define _CRT_SECURE_NO_WARNINGS
 #define _CRT_NONSTDC_NO_DEPRECATE
 #endif
 
@@ -1501,6 +1500,9 @@ createSlave(int maxLowPrioQueueSize, int maxHighPrioQueueSize)
 
 #if (CONFIG_CS104_APROFILE == 1)
         self->securityConfigured = false;
+        memset(&self->securityConfig, 0, sizeof(self->securityConfig));
+        memset(&self->certConfig, 0, sizeof(self->certConfig));
+        memset(&self->roleConfig, 0, sizeof(self->roleConfig));
 #endif
 
         self->plugins = NULL;
@@ -1572,7 +1574,7 @@ CS104_Slave_setLocalAddress(CS104_Slave self, const char* ipAddress)
     self->localAddress = (char*)GLOBAL_MALLOC(strlen(ipAddress) + 1);
 
     if (self->localAddress)
-        strcpy(self->localAddress, ipAddress);
+        strcpy_s(self->localAddress, strlen(ipAddress) + 1, ipAddress);
 }
 
 void
@@ -1806,8 +1808,53 @@ void
 CS104_Slave_setSecurityConfig(CS104_Slave self, const CS104_SecurityConfig* sec,
                               const CS104_CertConfig* cert, const CS104_RoleConfig* role)
 {
+    if (sec) {
+        self->securityConfig = *sec;
+    }
+    
+    if (cert) {
+        /* Store certificate paths - they will be loaded when AProfile context is created */
+        if (cert->privateKeyFile) {
+            size_t len = strlen(cert->privateKeyFile) + 1;
+            if (self->certConfig.privateKeyFile) {
+                GLOBAL_FREEMEM((void*)self->certConfig.privateKeyFile);
+            }
+            self->certConfig.privateKeyFile = (char*)GLOBAL_MALLOC(len);
+            if (self->certConfig.privateKeyFile) {
+                memcpy((void*)self->certConfig.privateKeyFile, cert->privateKeyFile, len);
+            }
+        }
+        
+        if (cert->ownCertificateFile) {
+            size_t len = strlen(cert->ownCertificateFile) + 1;
+            if (self->certConfig.ownCertificateFile) {
+                GLOBAL_FREEMEM((void*)self->certConfig.ownCertificateFile);
+            }
+            self->certConfig.ownCertificateFile = (char*)GLOBAL_MALLOC(len);
+            if (self->certConfig.ownCertificateFile) {
+                memcpy((void*)self->certConfig.ownCertificateFile, cert->ownCertificateFile, len);
+            }
+        }
+        
+        if (cert->caCertificateFile) {
+            size_t len = strlen(cert->caCertificateFile) + 1;
+            if (self->certConfig.caCertificateFile) {
+                GLOBAL_FREEMEM((void*)self->certConfig.caCertificateFile);
+            }
+            self->certConfig.caCertificateFile = (char*)GLOBAL_MALLOC(len);
+            if (self->certConfig.caCertificateFile) {
+                memcpy((void*)self->certConfig.caCertificateFile, cert->caCertificateFile, len);
+            }
+        }
+    }
+    
+    if (role) {
+        self->roleConfig = *role;
+    }
+    
     self->securityConfigured = true;
     /* AProfile contexts will be created in MasterConnection_init when connections are established */
+    /* Certificates will be loaded when AProfile context is created */
 }
 #else
 void
@@ -2023,6 +2070,44 @@ isSentBufferFull(MasterConnection self)
 static void
 sendASDU(MasterConnection self, uint8_t* buffer, int msgSize, uint64_t entryId, uint8_t* queueEntry)
 {
+#if (CONFIG_CS104_APROFILE == 1)
+    /* Apply encryption to queued ASDUs if security session is established */
+    if (self->sec && AProfile_ready(self->sec))
+    {
+        printf("[QUEUE-TX] Applying IEC 62351-5 ALS encryption to queued ASDU (size=%d)...\n", msgSize);
+        
+        /* Create a BufferFrame wrapper for the existing buffer */
+        struct sBufferFrame bufferFrame;
+        Frame frame = BufferFrame_initialize(&bufferFrame, buffer, IEC60870_5_104_APCI_LENGTH);
+        
+        /* The frame now wraps our buffer. We need to tell it the current size.
+         * Since BufferFrame tracks size internally via appendBytes, we simulate
+         * the ASDU being already in the buffer by advancing the internal pointer */
+        int asduSize = msgSize - IEC60870_5_104_APCI_LENGTH;
+        for (int i = 0; i < asduSize; i++) {
+            /* Buffer already has data, just advance internal size counter */
+            Frame_setNextByte(frame, buffer[IEC60870_5_104_APCI_LENGTH + i]);
+        }
+        
+        /* Apply encryption - this will modify the buffer in place */
+        if (AProfile_wrapOutAsdu(self->sec, (T104Frame)frame)) {
+            /* Update message size after encryption */
+            msgSize = Frame_getMsgSize(frame);
+            printf("[QUEUE-TX] Encryption applied successfully, new size: %d\n", msgSize);
+        } else {
+            printf("[QUEUE-TX] ERROR: Encryption failed!\n");
+        }
+    }
+    else if (self->sec)
+    {
+        printf("[QUEUE-TX] DEBUG: self->sec exists (%p) but AProfile_ready returned FALSE\n", (void*)self->sec);
+    }
+    else
+    {
+        printf("[QUEUE-TX] DEBUG: self->sec is NULL - sending plaintext\n");
+    }
+#endif
+
     int currentIndex = 0;
 
     if (self->oldestSentASDU == -1)
@@ -2063,22 +2148,91 @@ sendASDUInternal(MasterConnection self, CS101_ASDU asdu)
             struct sBufferFrame bufferFrame;
 
             Frame frame = BufferFrame_initialize(&bufferFrame, frameBuffer.msg, IEC60870_5_104_APCI_LENGTH);
+
+            /* Log ASDU before encoding */
+            struct sCS101_ASDU* asduInternal = (struct sCS101_ASDU*) asdu;
+            printf("\n[APDU-TX] ========== Sending ASDU ==========\n");
+            printf("[APDU-TX] ASDU Type: %d, COT: %d, CA: %d\n", 
+                   CS101_ASDU_getTypeID(asdu), CS101_ASDU_getCOT(asdu), CS101_ASDU_getCA(asdu));
+            printf("[APDU-TX] ASDU Header (%d bytes): ", asduInternal->asduHeaderLength);
+            for (int i = 0; i < asduInternal->asduHeaderLength; i++) 
+                printf("%02X ", asduInternal->asdu[i]);
+            printf("\n[APDU-TX] ASDU Payload (%d bytes): ", asduInternal->payloadSize);
+            for (int i = 0; i < asduInternal->payloadSize; i++) 
+                printf("%02X ", asduInternal->payload[i]);
+            printf("\n");
+
             CS101_ASDU_encode(asdu, frame);
 
+            int preSecSize = Frame_getMsgSize(frame);
+            printf("[APDU-TX] APDU before security (%d bytes): ", preSecSize);
+            for (int i = 0; i < preSecSize && i < 260; i++)
+                printf("%02X ", frameBuffer.msg[i]);
+            printf("\n");
+
             #if (CONFIG_CS104_APROFILE == 1)
-            if (self->sec && AProfile_ready(self->sec))
+            /* Check if this is a handshake control message */
+            TypeID typeId = CS101_ASDU_getTypeID(asdu);
+            bool isHandshakeMessage = (typeId == S_AR_NA_1 || typeId == S_AS_NA_1 || 
+                                       typeId == S_UK_NA_1 || typeId == S_UR_NA_1 ||
+                                       typeId == S_SR_NA_1 || typeId == S_SS_NA_1 ||
+                                       typeId == S_SK_NA_1 || typeId == S_SQ_NA_1);
+            
+            /* Handshake control messages must be sent even before security session is established */
+            if (isHandshakeMessage) {
+                printf("[APDU-TX] Sending handshake control message (Type=%d) - bypassing security check\n", typeId);
+                fflush(stdout);
+                /* Don't apply encryption to handshake messages - they are sent in plaintext */
+            }
+            /* Only send data if security session is established */
+            else if (self->sec && AProfile_ready(self->sec))
+            {
+                printf("[APDU-TX] Applying IEC 62351-5 ALS encryption...\n");
                 AProfile_wrapOutAsdu(self->sec, (T104Frame)frame);
+                printf("[APDU-TX] Encryption applied successfully\n");
+            }
+            else
+            {
+                if (self->sec) {
+                    printf("[APDU-TX] DEBUG: self->sec exists (%p) but AProfile_ready returned FALSE\n", (void*)self->sec);
+                } else {
+                    printf("[APDU-TX] DEBUG: self->sec is NULL\n");
+                }
+                
+                printf("[APDU-TX] WARNING: No ALS encryption (session not established) - dropping ASDU\n");
+                printf("[APDU-TX] Security context: %p, Ready: %s\n", 
+                       (void*)self->sec, 
+                       (self->sec && AProfile_ready(self->sec)) ? "YES" : "NO");
+                fflush(stdout);
+                /* Don't send unencrypted data if security is configured */
+                if (self->slave->securityConfigured) {
+                    printf("[APDU-TX] Security configured but session not established - NOT sending ASDU\n");
+                    fflush(stdout);
+                    /* Note: ASDU will be destroyed by caller, we just skip sending */
+                    asduSent = false;
+                    goto skip_send;
+                }
+            }
             #endif
 
             frameBuffer.msgSize = Frame_getMsgSize(frame);
+            
+            printf("[APDU-TX] Final APDU (%d bytes): ", frameBuffer.msgSize);
+            for (int i = 0; i < frameBuffer.msgSize && i < 260; i++)
+                printf("%02X ", frameBuffer.msg[i]);
+            printf("\n[APDU-TX] =====================================\n\n");
 
             sendASDU(self, frameBuffer.msg, frameBuffer.msgSize, 0, NULL);
+            asduSent = true;  /* Mark as sent after successful sendASDU call */
 
+skip_send:
 #if (CONFIG_USE_SEMAPHORES == 1)
             Semaphore_post(self->sentASDUsLock);
 #endif
 
-            asduSent = true;
+            if (asduSent) {
+                /* asduSent might have been set to false above if security check failed */
+            }
         }
         else
         {
@@ -2868,6 +3022,12 @@ handleMessage(MasterConnection self, uint8_t* buffer, int msgSize)
 
     if (msgSize >= 3)
     {
+        /* Debug: Print U-frame messages */
+        if ((buffer[2] & 0x03) == 0x03) {
+            printf("[SERVER] Received U-frame: 0x68 0x%02X 0x%02X (size=%d)\n", buffer[1], buffer[2], msgSize);
+            fflush(stdout);
+        }
+        
         if (buffer[0] != 0x68)
         {
             DEBUG_PRINT("CS104 SLAVE: Invalid START character!");
@@ -2965,10 +3125,20 @@ handleMessage(MasterConnection self, uint8_t* buffer, int msgSize)
                  */
                 if (self->sec)
                 {
+                    printf("[SERVER] Processing I-frame with security context (ASDU length=%d)\n", asduLen);
+                    fflush(stdout);
                     AProfileKind kind =
                         AProfile_handleInPdu(self->sec, buffer + 6, msgSize - 6, &asduBuf, &asduLen);
-                    if (kind == APROFILE_CTRL_MSG)
+                    if (kind == APROFILE_CTRL_MSG) {
+                        printf("[SERVER] Security control message handled - returning\n");
+                        fflush(stdout);
                         return true;
+                    }
+                    printf("[SERVER] Security message processing returned kind=%d, new ASDU length=%d\n", kind, asduLen);
+                    fflush(stdout);
+                } else {
+                    printf("[SERVER] WARNING: Received I-frame but security context is NULL!\n");
+                    fflush(stdout);
                 }
 #endif
 
@@ -3012,18 +3182,40 @@ handleMessage(MasterConnection self, uint8_t* buffer, int msgSize)
         /* Check for STARTDT_ACT message */
         else if ((buffer[2] & 0x07) == 0x07)
         {
+            printf("[SERVER] *** Received STARTDT_ACT (0x07) ***\n");
+            fflush(stdout);
+            
             CS104_Slave_activate(self->slave, self);
 
             HighPriorityASDUQueue_resetConnectionQueue(self->highPrioQueue);
 
             DEBUG_PRINT("CS104 SLAVE: Send STARTDT_CON\n");
+            printf("[SERVER] *** Sending STARTDT_CON (0x0B) - Connection activated ***\n");
+            fflush(stdout);
 
-            if (writeToSocket(self, STARTDT_CON_MSG, STARTDT_CON_MSG_SIZE) < 0)
+            if (writeToSocket(self, STARTDT_CON_MSG, STARTDT_CON_MSG_SIZE) < 0) {
+                printf("[SERVER] ERROR: Failed to send STARTDT_CON\n");
+                fflush(stdout);
                 return false;
+            }
+            
+            printf("[SERVER] STARTDT_CON sent successfully\n");
+            fflush(stdout);
 
 #if (CONFIG_CS104_APROFILE == 1)
-            if (self->sec)
-                AProfile_onStartDT(self->sec);
+            printf("[SERVER] Checking security context...\n");
+            printf("[SERVER] Security context pointer: %p\n", (void*)self->sec);
+            fflush(stdout);
+            
+            if (self->sec) {
+                /* IEC 62351-5:2023: Server waits for client to initiate handshake */
+                /* The handshake will be triggered when client sends Association Request */
+                printf("[SERVER] Security context ready - waiting for client handshake initiation\n");
+                fflush(stdout);
+            } else {
+                printf("[SERVER] *** WARNING: Security context is NULL! ***\n");
+                fflush(stdout);
+            }
 #endif
         }
 
@@ -3655,7 +3847,7 @@ _IMasterConnection_getPeerAddress(IMasterConnection self, char* addrBuf, int add
 
     if (len < addrBufSize)
     {
-        strcpy(addrBuf, buf);
+        strcpy_s(addrBuf, addrBufSize, buf);
         return len;
     }
     else
@@ -3802,10 +3994,31 @@ MasterConnection_init(MasterConnection self, Socket skt, MessageQueue lowPrioQue
         /* Create AProfile context if security is configured and not already created */
         if (self->slave->securityConfigured && self->sec == NULL)
         {
-            self->sec = AProfile_create(self, cs104Server_sendAsdu, &(self->slave->alParameters), false); /* false = server */
+            printf("[SERVER] Creating security context for new connection...\n");
+            fflush(stdout);
+            
+            self->sec = AProfile_create(self, cs104Server_sendAsdu, &(self->slave->alParameters), false); /* false = server/controlled station */
             if (self->sec == NULL)
             {
+                printf("[SERVER] ERROR: Failed to create security context!\n");
+                fflush(stdout);
                 return false;
+            }
+            
+            printf("[SERVER] Security context created successfully\n");
+            fflush(stdout);
+            
+            /* Load certificates if provided */
+            if (self->slave->certConfig.privateKeyFile || 
+                self->slave->certConfig.ownCertificateFile || 
+                self->slave->certConfig.caCertificateFile)
+            {
+                printf("[SERVER] Loading certificates into security context...\n");
+                fflush(stdout);
+                AProfile_loadCertificate(self->sec,
+                                        self->slave->certConfig.ownCertificateFile,
+                                        self->slave->certConfig.privateKeyFile,
+                                        self->slave->certConfig.caCertificateFile);
             }
         }
 #endif
@@ -5021,6 +5234,19 @@ CS104_Slave_destroy(CS104_Slave self)
         {
             LinkedList_destroyStatic(self->plugins);
         }
+
+#if (CONFIG_CS104_APROFILE == 1)
+        /* Clean up certificate paths */
+        if (self->certConfig.privateKeyFile) {
+            GLOBAL_FREEMEM((void*)self->certConfig.privateKeyFile);
+        }
+        if (self->certConfig.ownCertificateFile) {
+            GLOBAL_FREEMEM((void*)self->certConfig.ownCertificateFile);
+        }
+        if (self->certConfig.caCertificateFile) {
+            GLOBAL_FREEMEM((void*)self->certConfig.caCertificateFile);
+        }
+#endif
 
         GLOBAL_FREEMEM(self);
     }

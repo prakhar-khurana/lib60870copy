@@ -671,6 +671,12 @@ static bool
 checkMessage(CS104_Connection self, uint8_t* buffer, int msgSize)
 {
     bool retVal = true;
+    
+    /* Debug: Print received message type - only for U-frames to reduce output */
+    if (msgSize >= 3 && (buffer[2] & 0x03) == 0x03) {
+        printf("[CLIENT] Received U-frame: 0x68 0x%02X 0x%02X (size=%d)\n", buffer[1], buffer[2], msgSize);
+        fflush(stdout);
+    }
 
     if ((buffer[2] & 1) == 0) /* I format frame */
     {
@@ -747,6 +753,8 @@ checkMessage(CS104_Connection self, uint8_t* buffer, int msgSize)
     else if ((buffer[2] & 0x03) == 0x03) /* U format frame */
     {
         DEBUG_PRINT("Received U frame\n");
+        printf("[CLIENT] Received U-frame (type: 0x%02X)\n", buffer[2]);
+        fflush(stdout);
 
         self->uMessageTimeout = 0;
 
@@ -772,12 +780,28 @@ checkMessage(CS104_Connection self, uint8_t* buffer, int msgSize)
         else if (buffer[2] == 0x0b)
         { /* STARTDT_CON */
             DEBUG_PRINT("Received STARTDT_CON\n");
+            printf("[CLIENT] *** STARTDT_CON RECEIVED (0x0B) - Connection activated ***\n");
+            fflush(stdout);
 
             self->conState = STATE_ACTIVE;
 
 #if (CONFIG_CS104_APROFILE == 1)
-            if (self->sec)
-                AProfile_onStartDT(self->sec);
+            printf("[CLIENT] Checking security context...\n");
+            printf("[CLIENT] Security context pointer: %p\n", (void*)self->sec);
+            fflush(stdout);
+            
+            if (self->sec) {
+                /* IEC 62351-5:2023: Initiate compliant 8-step handshake after STARTDT_CON */
+                printf("[HANDSHAKE] *** Initiating IEC 62351-5:2023 8-step handshake... ***\n");
+                fflush(stdout);
+                bool handshake_result = AProfile_startCompliantHandshake(self->sec);
+                printf("[HANDSHAKE] Handshake initiation returned: %s\n", handshake_result ? "SUCCESS" : "FAILED");
+                fflush(stdout);
+            } else {
+                printf("[HANDSHAKE] *** ERROR: Security context is NULL! ***\n");
+                printf("[HANDSHAKE] Security was not properly initialized!\n");
+                fflush(stdout);
+            }
 #endif
         }
         else if (buffer[2] == 0x23)
@@ -1040,8 +1064,16 @@ handleConnection(void* parameter)
 
                             CS104_ConState oldState = self->conState;
 
+                            /* Debug: Show what message we're about to process */
+                            if (bytesRec >= 3 && (self->recvBuffer[2] & 0x03) == 0x03) {
+                                printf("[CLIENT] Processing U-frame: 0x%02X\n", self->recvBuffer[2]);
+                                fflush(stdout);
+                            }
+                            
                             if (checkMessage(self, self->recvBuffer, bytesRec) == false)
                             {
+                                printf("[CLIENT] ERROR: checkMessage returned false\n");
+                                fflush(stdout);
                                 /* close connection on error */
                                 loopRunning = false;
 
@@ -1238,13 +1270,18 @@ void
 CS104_Connection_setSecurityConfig(CS104_Connection self, const CS104_SecurityConfig* sec,
                                    const CS104_CertConfig* cert, const CS104_RoleConfig* role)
 {
-
+    printf("[CLIENT] Setting security configuration...\n");
+    fflush(stdout);
+    
     if (self->sec)
         AProfile_destroy(self->sec);
 
-    self->sec = AProfile_create(self, cs104Client_sendAsdu, &(self->alParameters), true); /* true = client */
+    self->sec = AProfile_create(self, cs104Client_sendAsdu, &(self->alParameters), true); /* true = client/controlling station */
 
     if (self->sec) {
+        printf("[CLIENT] Security context created successfully\n");
+        fflush(stdout);
+        
         if (self->desiredAlgorithm == 2) {
 #ifdef HAVE_LIBOQS
             AProfile_setAlgorithm(self->sec, APROFILE_ALG_KYBER);
@@ -1254,6 +1291,20 @@ CS104_Connection_setSecurityConfig(CS104_Connection self, const CS104_SecurityCo
         } else {
             AProfile_setAlgorithm(self->sec, APROFILE_ALG_ECDH);
         }
+        
+        /* Load certificates if provided */
+        if (cert && (cert->privateKeyFile || cert->ownCertificateFile || cert->caCertificateFile))
+        {
+            printf("[CLIENT] Loading certificates into security context...\n");
+            fflush(stdout);
+            AProfile_loadCertificate(self->sec,
+                                     cert->ownCertificateFile,
+                                     cert->privateKeyFile,
+                                     cert->caCertificateFile);
+        }
+    } else {
+        printf("[CLIENT] ERROR: Failed to create security context!\n");
+        fflush(stdout);
     }
 }
 
@@ -1565,9 +1616,28 @@ CS104_Connection_sendASDU(CS104_Connection self, CS101_ASDU asdu)
     CS101_ASDU_encode(asdu, frame);
 
 #if (CONFIG_CS104_APROFILE == 1)
-    /* For security control messages (S_RP_NA_1 = key exchange), send directly without locking
-     * to avoid deadlock when called from receive thread */
-    if (CS101_ASDU_getTypeID(asdu) == S_RP_NA_1) {
+    /* For IEC 62351-5:2023 handshake control messages, send directly without locking
+     * to avoid deadlock when called from receive thread during handshake.
+     * These are the 8-step handshake messages that must be sent immediately:
+     * - S_AR_NA_1 (140): Association Request (Step 1)
+     * - S_AS_NA_1 (141): Association Response (Step 2)
+     * - S_UK_NA_1 (142): Update Key Change Request (Step 3)
+     * - S_UR_NA_1 (146): Update Key Change Response (Step 4)
+     * - S_SR_NA_1 (214): Session Request (Step 5)
+     * - S_SS_NA_1 (215): Session Response (Step 6)
+     * - S_SK_NA_1 (216): Session Key Change Request (Step 7)
+     * - S_SQ_NA_1 (217): Session Key Change Response (Step 8)
+     * 
+     * Note: S_RP_NA_1 (136) is legacy and should not be used in compliant handshake.
+     * Secure data ASDUs (wrapped in S_RP_NA_1 or S_SE_NA_1) go through normal path.
+     */
+    TypeID typeId = CS101_ASDU_getTypeID(asdu);
+    if (typeId == S_AR_NA_1 || typeId == S_AS_NA_1 || 
+        typeId == S_UK_NA_1 || typeId == S_UR_NA_1 ||
+        typeId == S_SR_NA_1 || typeId == S_SS_NA_1 ||
+        typeId == S_SK_NA_1 || typeId == S_SQ_NA_1) {
+        printf("[CLIENT] Sending handshake control message (Type=%d) directly...\n", typeId);
+        fflush(stdout);
         /* Check running state directly without semaphore to avoid deadlock */
         if (self->running) {
             sendIMessageAndUpdateSentASDUs(self, frame);

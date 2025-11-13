@@ -1,0 +1,62 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <ProjectOutputs>
+    <ProjectOutput>
+      <FullPath>C:\Users\z005653n\Desktop\lib60870\lib60870-C\build-new\x64\Debug\ZERO_CHECK</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Users\z005653n\Desktop\lib60870\lib60870-C\build-new\examples\Debug\cs101_master_balanced.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Users\z005653n\Desktop\lib60870\lib60870-C\build-new\examples\Debug\cs101_master_unbalanced.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Users\z005653n\Desktop\lib60870\lib60870-C\build-new\examples\Debug\cs101_slave.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Users\z005653n\Desktop\lib60870\lib60870-C\build-new\examples\Debug\cs101_slave_files.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Users\z005653n\Desktop\lib60870\lib60870-C\build-new\examples\Debug\cs104_client.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Users\z005653n\Desktop\lib60870\lib60870-C\build-new\examples\Debug\cs104_client_async.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Users\z005653n\Desktop\lib60870\lib60870-C\build-new\examples\Debug\cs104_redundancy_server.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Users\z005653n\Desktop\lib60870\lib60870-C\build-new\examples\Debug\cs104_server.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Users\z005653n\Desktop\lib60870\lib60870-C\build-new\examples\Debug\cs104_server_files.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Users\z005653n\Desktop\lib60870\lib60870-C\build-new\examples\Debug\cs104_server_no_threads.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Users\z005653n\Desktop\lib60870\lib60870-C\build-new\examples\iec62351_5_demo\Debug\iec62351_5_demo_client.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Users\z005653n\Desktop\lib60870\lib60870-C\build-new\examples\iec62351_5_demo\Debug\iec62351_5_demo_server.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Users\z005653n\Desktop\lib60870\lib60870-C\build-new\src\Debug\lib60870.dll</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Users\z005653n\Desktop\lib60870\lib60870-C\build-new\examples\Debug\multi_client_server.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Users\z005653n\Desktop\lib60870\lib60870-C\build-new\examples\Debug\tls_client.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Users\z005653n\Desktop\lib60870\lib60870-C\build-new\examples\Debug\tls_server.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Users\z005653n\Desktop\lib60870\lib60870-C\build-new\x64\Debug\ALL_BUILD</FullPath>
+    </ProjectOutput>
+  </ProjectOutputs>
+  <ContentFiles />
+  <SatelliteDlls />
+  <NonRecipeFileRefs />
+</Project>

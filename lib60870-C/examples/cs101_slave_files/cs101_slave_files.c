@@ -166,7 +166,9 @@ fileReadyHandler (void* parameter, int ca, int ioa, uint16_t nof, int lengthOfFi
 {
     if ((ca == 1) && (ioa == 30001)) {
 
-        myFileReceiver.object = fopen("upload.dat", "wb");
+        FILE* fp = NULL;
+        fopen_s(&fp, "upload.dat", "wb");
+        myFileReceiver.object = fp;
 
         myFileReceiver.finished = IFileReceiver_finished;
         myFileReceiver.segmentReceived = IFileReceiver_segmentReceived;
@@ -465,7 +467,7 @@ main(int argc, char** argv)
     }
 
 
-exit_program:
+// exit_program:
     CS101_Slave_destroy(slave);
 
     SerialPort_close(port);

@@ -30,7 +30,7 @@ set(CPACK_IGNORE_FILES "/CVS/;/\\.svn/;/\\.bzr/;/\\.hg/;/\\.git/;\\.swp\$;\\.#;/
 set(CPACK_INNOSETUP_ARCHITECTURE "x64")
 set(CPACK_INSTALLED_DIRECTORIES "C:/Users/z005653n/Desktop/lib60870;/")
 set(CPACK_INSTALL_CMAKE_PROJECTS "")
-set(CPACK_INSTALL_PREFIX "C:/Program Files (x86)/lib60870-C")
+set(CPACK_INSTALL_PREFIX "C:/Program Files/lib60870-C")
 set(CPACK_MODULE_PATH "")
 set(CPACK_NSIS_DISPLAY_NAME "lib60870-C 2.3.5")
 set(CPACK_NSIS_INSTALLER_ICON_CODE "")

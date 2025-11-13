@@ -1,0 +1,6 @@
+# CMake generation dependency list for this directory.
+C:/Users/z005653n/Desktop/lib60870/lib60870-C/dependencies/mbedtls-2.28.8/pkgconfig/CMakeLists.txt
+C:/Users/z005653n/Desktop/lib60870/lib60870-C/dependencies/mbedtls-2.28.8/pkgconfig/JoinPaths.cmake
+C:/Users/z005653n/Desktop/lib60870/lib60870-C/dependencies/mbedtls-2.28.8/pkgconfig/mbedcrypto.pc.in
+C:/Users/z005653n/Desktop/lib60870/lib60870-C/dependencies/mbedtls-2.28.8/pkgconfig/mbedtls.pc.in
+C:/Users/z005653n/Desktop/lib60870/lib60870-C/dependencies/mbedtls-2.28.8/pkgconfig/mbedx509.pc.in

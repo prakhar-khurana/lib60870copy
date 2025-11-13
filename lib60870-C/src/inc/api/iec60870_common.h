@@ -174,16 +174,12 @@ typedef enum {
     C_BO_TA_1 = 64,
     M_EI_NA_1 = 70,
     S_CH_NA_1 = 81,
-    /* S_RP_NA_1 = 82, */
-    S_AR_NA_1 = 83,
     S_KR_NA_1 = 84,
     S_KS_NA_1 = 85,
     S_KC_NA_1 = 86,
     S_ER_NA_1 = 87,
     S_US_NA_1 = 90,
     S_UQ_NA_1 = 91,
-    S_UR_NA_1 = 92,
-    S_UK_NA_1 = 93,
     S_UA_NA_1 = 94,
     S_UC_NA_1 = 95,
     C_IC_NA_1 = 100,
@@ -208,19 +204,23 @@ typedef enum {
     F_SC_NB_1 = 127,
     S_RP_NA_1 = 136, /* A-profile key exchange (legacy) */
     S_SP_NA_1 = 137, /* A-profile security statistics */
-    S_SE_NA_1 = 138, /* A-profile secure ASDU */
-    
-    /* IEC 62351-5:2023 Compliant ASDU Types */
     S_AR_NA_1 = 140, /* Association Request */
     S_AS_NA_1 = 141, /* Association Response */
     S_UK_NA_1 = 142, /* Update Key Change Request */
-    S_UR_NA_1 = 143, /* Update Key Change Response */
-    S_SR_NA_1 = 144, /* Session Request */
-    S_SS_NA_1 = 145, /* Session Response */
-    S_SK_NA_1 = 146, /* Session Key Change Request */
-    S_SQ_NA_1 = 147, /* Session Key Change Response */
-    S_AC_NA_1 = 150, /* Association Confirm */
-    S_AB_NA_1 = 151  /* Association Abort */
+    S_UK_CA_1 = 143, /* Update Key Change Acknowledge */
+    S_UC_CA_1 = 144, /* User Certificate Change Acknowledge */
+    S_US_CA_1 = 145, /* Update Session Key Acknowledge */
+    S_UR_NA_1 = 146, /* User Role Change Request */
+    S_UR_CA_1 = 147, /* User Role Change Acknowledge */
+    S_UP_NA_1 = 148, /* Update Parameter Request */
+    S_UP_CA_1 = 149, /* Update Parameter Acknowledge */
+    S_UQ_CA_1 = 150, /* User Query Acknowledge */
+    S_AB_NA_1 = 151, /* Association Abort */
+    S_SE_NA_1 = 138, /* Secure Encrypted Data - IEC 62351-5:2023 Table 28 */
+    S_SR_NA_1 = 214, /* Session Request */
+    S_SS_NA_1 = 215, /* Session Response */
+    S_SK_NA_1 = 216, /* Session Key Change Request */
+    S_SQ_NA_1 = 217  /* Session Key Change Response */
 } IEC60870_5_TypeID;
 
 typedef IEC60870_5_TypeID TypeID;

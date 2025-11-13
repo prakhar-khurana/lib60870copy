@@ -5,6 +5,7 @@ build/**
 .env
 lib60870-C/build/
 lib60870-C/build-new/
+lib60870-C/final-build/
 lib60870-C/CmakeFiles
 lib60870-C/dependencies/**
 build-pqc/**

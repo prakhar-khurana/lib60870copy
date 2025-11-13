@@ -1207,6 +1207,8 @@ AProfile_handleSessionRequest(AProfileContext self, CS101_ASDU asdu)
 bool
 AProfile_sendSessionResponse(AProfileContext self)
 {
+    printf("\n=== SESSION RESPONSE (S_SS_NA_1) - IEC 62351-5 Page 34 ===\n");
+    printf("Controlled Station provides Random Data and calculates the MAC\n");
     printf("APROFILE: Sending Session Response (S_SS_NA_1)\n");
     
     CS101_ASDU asdu = CS101_ASDU_create(self->parameters, false, CS101_COT_AUTHENTICATION, 0, 0, false, false);
@@ -1223,10 +1225,23 @@ AProfile_sendSessionResponse(AProfileContext self)
     asdu_header[4] = 0;           /* Common Address (LSB) */
     asdu_header[5] = 0;           /* Common Address (MSB) */
     
+    printf("\n[SESSION-RESP] ----- PARAMETERS (Page 34) -----\n");
+    printf("[SESSION-RESP] C (Controlled Station Association ID): %d\n", 0);
+    printf("[SESSION-RESP] ied (Station Association ID): %d\n", 0);
+    printf("[SESSION-RESP] ASDU Header (6 bytes): ");
+    for (int i = 0; i < 6; i++) printf("%02X ", asdu_header[i]);
+    printf("\n[SESSION-RESP] K_UA (Authentication Update Key): ");
+    for (int i = 0; i < 32; i++) printf("%02X ", self->K_UA[i]);
+    printf("\n[SESSION-RESP] ----- END PARAMETERS -----\n\n");
+    
     /* Calculate MAC over 6-byte ASDU header using K_UA */
     uint8_t mac[32];
     const mbedtls_md_info_t* md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
     int ret = mbedtls_md_hmac(md_info, self->K_UA, 32, asdu_header, 6, mac);
+    
+    printf("[SESSION-RESP-MAC] Calculated MAC (32 bytes): ");
+    for (int i = 0; i < 32; i++) printf("%02X ", mac[i]);
+    printf("\n");
     
     if (ret != 0) {
         CS101_ASDU_destroy(asdu);
@@ -1259,6 +1274,8 @@ AProfile_sendSessionResponse(AProfileContext self)
 bool
 AProfile_handleSessionResponse(AProfileContext self, CS101_ASDU asdu)
 {
+    printf("\n=== VERIFY SESSION RESPONSE (S_SS_NA_1) - Page 34 ===\n");
+    printf("Controlling Station verifies MAC\n");
     printf("APROFILE: Client received Session Response (S_SS_NA_1)\n");
     
     /* Verify MAC */
@@ -1273,13 +1290,22 @@ AProfile_handleSessionResponse(AProfileContext self, CS101_ASDU asdu)
 
     const uint8_t* received_mac = SecurityPublicKey_getKeyValue(spk);
     
+    printf("\n[SESSION-RESP-VERIFY] ----- VERIFICATION PARAMETERS -----\n");
+    printf("[SESSION-RESP-VERIFY] Received MAC (32 bytes): ");
+    for (int i = 0; i < 32; i++) printf("%02X ", received_mac[i]);
+    printf("\n[SESSION-RESP-VERIFY] K_UA (for verification): ");
+    for (int i = 0; i < 32; i++) printf("%02X ", self->K_UA[i]);
+    printf("\n[SESSION-RESP-VERIFY] ----- END VERIFICATION PARAMETERS -----\n\n");
+    
     /* IEC 62351-5:2023 Clause 8.4.1: Verify MAC over ASDU bytes using K_UA */
     if (!AProfile_verifyMACOverASDU(self, asdu, received_mac)) {
+        printf("[SESSION-RESP-VERIFY] MAC verification FAILED\n");
         printf("APROFILE: MAC verification failed for Session Response\n");
         return false;
     }
     
-    printf("APROFILE: MAC verification successful - Session request accepted by server\n");
+    printf("[SESSION-RESP-VERIFY] MAC verification SUCCESSFUL\n");
+    printf("APROFILE: MAC verification successful - Session request accepted by server\n\n");
     
     /* Generate Session Keys */
     if (!AProfile_generateSessionKeys(self)) {
@@ -1304,16 +1330,35 @@ bool AProfile_sendSessionKeyChangeRequest(AProfileContext self) {
         }
     }
 
+    printf("\n=== SESSION KEY CHANGE REQUEST (S_SK_NA_1) - Page 34 ===\n");
+    printf("Verify MAC, Generate Session Keys, Encrypt Keys, MAC\n");
     printf("\n[HANDSHAKE STEP 7/8] Sending Session Key Change Request (S_SK_NA_1)\n");
+    
+    printf("\n[SESSION-KEY-REQ] ----- SESSION KEYS (Page 34) -----\n");
+    printf("[SESSION-KEY-REQ] K_SC (Session Key - Control, 32 bytes): ");
+    for (int i = 0; i < 32; i++) printf("%02X ", self->K_SC[i]);
+    printf("\n[SESSION-KEY-REQ] K_SM (Session Key - Monitor, 32 bytes): ");
+    for (int i = 0; i < 32; i++) printf("%02X ", self->K_SM[i]);
+    printf("\n[SESSION-KEY-REQ] Data Protection Algorithm: AES-256-GCM\n");
+    printf("[SESSION-KEY-REQ] ----- END SESSION KEYS -----\n\n");
     
     // Wrap session keys
     uint8_t wrapped_keys[72];
     size_t wrapped_len = sizeof(wrapped_keys);  // Must be set to buffer size for AProfile_wrapSessionKeys
     
+    printf("[SESSION-KEY-REQ] Wrapping session keys with K_UE (Encryption Update Key)...\n");
+    printf("[SESSION-KEY-REQ] K_UE: ");
+    for (int i = 0; i < 32; i++) printf("%02X ", self->K_UE[i]);
+    printf("\n");
+    
     if (!AProfile_wrapSessionKeys(self, wrapped_keys, &wrapped_len) || wrapped_len == 0) {
         printf("[ERROR] Failed to wrap session keys\n");
         return false;
     }
+    
+    printf("[SESSION-KEY-REQ] Encrypted Session Keys (%zu bytes): ", wrapped_len);
+    for (size_t i = 0; i < wrapped_len; i++) printf("%02X ", wrapped_keys[i]);
+    printf("\n");
 
     // Create ASDU
     CS101_ASDU asdu = CS101_ASDU_create(self->parameters, false, 
@@ -1346,10 +1391,21 @@ bool AProfile_sendSessionKeyChangeRequest(AProfileContext self) {
     asdu_header[5] = 0;           /* Common Address (MSB) */
     
     uint8_t mac[32];
-    printf("[CRYPTO] Calculating HMAC-SHA256 MAC...\n");
+    printf("\n[SESSION-KEY-REQ-MAC] ----- MAC CALCULATION -----\n");
+    printf("[SESSION-KEY-REQ-MAC] ASDU Header (6 bytes): ");
+    for (int i = 0; i < 6; i++) printf("%02X ", asdu_header[i]);
+    printf("\n[SESSION-KEY-REQ-MAC] K_UA (Authentication Update Key): ");
+    for (int i = 0; i < 32; i++) printf("%02X ", self->K_UA[i]);
+    printf("\n[SESSION-KEY-REQ-MAC] Calculating HMAC-SHA256 MAC...\n");
     
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
     int ret = mbedtls_md_hmac(md_info, self->K_UA, 32, asdu_header, 6, mac);
+    
+    if (ret == 0) {
+        printf("[SESSION-KEY-REQ-MAC] Calculated MAC (32 bytes): ");
+        for (int i = 0; i < 32; i++) printf("%02X ", mac[i]);
+        printf("\n[SESSION-KEY-REQ-MAC] ----- END MAC CALCULATION -----\n\n");
+    }
     
     if (ret != 0) {
         printf("[ERROR] HMAC calculation failed: -0x%04X\n", -ret);
@@ -1452,11 +1508,18 @@ AProfile_handleSessionKeyChangeRequest(AProfileContext self, CS101_ASDU asdu)
     printf("APROFILE: MAC verification successful\n");
     
     /* Unwrap session keys using K_UE */
+    printf("[SESSION-KEY-VERIFY] Unwrapping session keys...\n");
     if (!AProfile_unwrapSessionKeys(self, wrapped_keys, wrapped_keys_len)) {
         printf("APROFILE: Failed to unwrap session keys\n");
         return false;
     }
     
+    printf("[SESSION-KEY-VERIFY] Session Keys unwrapped successfully\n");
+    printf("[SESSION-KEY-VERIFY] K_SC (Control): ");
+    for (int i = 0; i < 32; i++) printf("%02X ", self->K_SC[i]);
+    printf("\n[SESSION-KEY-VERIFY] K_SM (Monitor): ");
+    for (int i = 0; i < 32; i++) printf("%02X ", self->K_SM[i]);
+    printf("\n");
     printf("APROFILE: Session Keys (K_SC, K_SM) unwrapped successfully\n");
     
     /* Send Session Key Change Response */

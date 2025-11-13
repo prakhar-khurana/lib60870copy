@@ -393,4 +393,17 @@ the MAC value in the messages received.
 
 The Controlled station shall use the current Monitoring Direction Session Key to calculate the
 MAC value in the messages to be transmitted, and the and the current Control Direction Session
-Key to verify the MAC value in the messages received.
+
+
+
+
+
+
+
+To Be Done:
+How to change the derived keys without having all the steps.
+{ Wireshark and internal debug print to check if the payload is encrypted (post and pre)
+PAGE 34 association diagram 
+print all the parameters in the debug output as mentioned in the diagram for the verification. }
+
+cross check the transmission values with the received values,

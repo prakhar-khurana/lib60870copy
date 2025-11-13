@@ -59,7 +59,7 @@ AProfile_loadCertificate(AProfileContext self, const char* certPath, const char*
                 memcpy(safe_path, caPath, len);
             }
             safe_path[len] = '\0';
-            printf("[CERT] ✓ Loaded CA certificate: %s\n", safe_path);
+            printf("[CERT] Loaded CA certificate: %s\n", safe_path);
         }
     }
     
@@ -79,7 +79,7 @@ AProfile_loadCertificate(AProfileContext self, const char* certPath, const char*
                 memcpy(safe_path, certPath, len);
             }
             safe_path[len] = '\0';
-            printf("[CERT] ✓ Loaded local certificate: %s\n", safe_path);
+            printf("[CERT] Loaded local certificate: %s\n", safe_path);
         }
     }
     
@@ -99,7 +99,7 @@ AProfile_loadCertificate(AProfileContext self, const char* certPath, const char*
                 memcpy(safe_path, keyPath, len);
             }
             safe_path[len] = '\0';
-            printf("[CERT] ✓ Loaded private key: %s\n", safe_path);
+            printf("[CERT] Loaded private key: %s\n", safe_path);
         }
     }
     
@@ -134,7 +134,7 @@ AProfile_verifyCertificate(AProfileContext self, const uint8_t* certData, size_t
         return false;
     }
     
-    printf("[CERT] ✓ Peer certificate verified successfully\n");
+    printf("[CERT] Peer certificate verified successfully\n");
     return true;
 }
 
@@ -200,7 +200,7 @@ AProfile_encryptASdu(AProfileContext self, const uint8_t* plaintext, size_t plai
     /* IEC 62351-5:2023 Clause 8.5.2.2.4: Increment DSQ after encryption */
     self->DSQ_local++;
     
-    printf("[CRYPTO] ✓ ASDU encrypted with AES-256-GCM (DSQ=%u)\n", self->DSQ_local - 1);
+    printf("[CRYPTO] ASDU encrypted with AES-256-GCM (DSQ=%u)\n", self->DSQ_local - 1);
     return true;
 }
 
@@ -216,14 +216,14 @@ AProfile_decryptASdu(AProfileContext self, const uint8_t* ciphertext, size_t cip
     
     /* IEC 62351-5:2023 Clause 8.5.2.2.4: Verify DSQ to prevent replay attacks */
     if (sequence_number <= self->DSQ_remote && self->DSQ_remote != 0) {
-        printf("[SECURITY] ✗ Replay attack detected! DSQ=%u (expected > %u)\n",
+        printf("[SECURITY] Replay attack detected! DSQ=%u (expected > %u)\n",
                sequence_number, self->DSQ_remote);
         return false;
     }
     
     /* Verify DSQ is not 0 (invalid) */
     if (sequence_number == 0) {
-        printf("[SECURITY] ✗ Invalid DSQ=0\n");
+        printf("[SECURITY] Invalid DSQ=0\n");
         return false;
     }
     
@@ -266,14 +266,14 @@ AProfile_decryptASdu(AProfileContext self, const uint8_t* ciphertext, size_t cip
     mbedtls_gcm_free(&gcm_temp);
     
     if (ret != 0) {
-        printf("[CRYPTO] ✗ AES-GCM decryption/authentication failed: %d\n", ret);
+        printf("[CRYPTO] AES-GCM decryption/authentication failed: %d\n", ret);
         return false;
     }
     
     *plaintext_len = ciphertext_len;
     self->DSQ_remote = sequence_number;
     
-    printf("[CRYPTO] ✓ ASDU decrypted and authenticated (DSQ=%u)\n", sequence_number);
+    printf("[CRYPTO] ASDU decrypted and authenticated (DSQ=%u)\n", sequence_number);
     return true;
 }
 
@@ -332,7 +332,7 @@ AProfile_sendSecureASdu(AProfileContext self, CS101_ASDU asdu)
     
     CS101_ASDU_destroy(secure_asdu);
     
-    printf("[SECURE DATA] ✓ Encrypted ASDU sent (DSQ=%u, Size=%zu bytes)\n",
+    printf("[SECURE DATA] Encrypted ASDU sent (DSQ=%u, Size=%zu bytes)\n",
            (unsigned int)(self->DSQ_local - 1), (size_t)(encrypted_len + 16));
     printf("[CRYPTO] Encrypted Packet (hex): ");
     for (size_t i = 0; i < (encrypted_len + 16 > 32 ? 32 : encrypted_len + 16); i++) {
@@ -362,9 +362,7 @@ AProfile_initiateHandshake(AProfileContext self)
     }
     
     printf("\n");
-    printf("╔════════════════════════════════════════════════════════════╗\n");
-    printf("║   IEC 62351-5:2023 8-Step Security Handshake              ║\n");
-    printf("╚════════════════════════════════════════════════════════════╝\n");
+    printf("=== IEC 62351-5:2023 8-Step Security Handshake ===\n");
     printf("\n");
     
     /* Step 1: Send Association Request */
@@ -380,9 +378,7 @@ AProfile_printKeys(AProfileContext self)
     if (!self) return;
     
     printf("\n");
-    printf("╔════════════════════════════════════════════════════════════╗\n");
-    printf("║   IEC 62351-5:2023 Key Material                           ║\n");
-    printf("╚════════════════════════════════════════════════════════════╝\n");
+    printf("=== IEC 62351-5:2023 Key Material ===\n");
     printf("\n");
     
     printf("[KEYS] Update Keys (HKDF-derived from ECDH shared secret):\n");

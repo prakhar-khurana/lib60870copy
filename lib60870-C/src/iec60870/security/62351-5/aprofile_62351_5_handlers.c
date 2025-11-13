@@ -120,12 +120,10 @@ AProfile_handleCompliantMessage(AProfileContext self, CS101_ASDU asdu)
                 printf("[CRYPTO] Server confirmed Session Keys\n");
                 printf("[CRYPTO] Initializing AES-256-GCM encryption contexts\n");
                 printf("[CRYPTO] Setting DSQ (Data Sequence Number) = 1\n");
-                printf("\n╔════════════════════════════════════════════════════════════╗\n");
-                printf("║   HANDSHAKE COMPLETE - SESSION ESTABLISHED                ║\n");
-                printf("╚════════════════════════════════════════════════════════════╝\n\n");
+                printf("\n=== HANDSHAKE COMPLETE - SESSION ESTABLISHED ===\n\n");
                 printf("[SECURITY] All 8 handshake steps completed successfully\n");
                 printf("[SECURITY] Secure session established with:\n");
-                printf("[SECURITY]   - Two-level key hierarchy (Update Keys → Session Keys)\n");
+                printf("[SECURITY]   - Two-level key hierarchy (Update Keys -> Session Keys)\n");
                 printf("[SECURITY]   - Separate keys for Control and Monitor directions\n");
                 printf("[SECURITY]   - AES-256-GCM encryption ready\n");
                 printf("[SECURITY]   - HMAC-SHA256 authentication ready\n");

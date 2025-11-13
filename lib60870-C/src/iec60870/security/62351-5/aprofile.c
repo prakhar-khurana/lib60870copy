@@ -313,12 +313,17 @@ bool
 AProfile_wrapOutAsdu(AProfileContext self, T104Frame frame)
 {
 #if (CONFIG_CS104_APROFILE == 1)
+    printf("\n=== IEC 62351-5 ENCRYPTION - PRE-PROCESSING ===\n");
     printf("[ENCRYPT-DEBUG] AProfile_wrapOutAsdu called\n");
     printf("[ENCRYPT-DEBUG] security_active: %s\n", self->security_active ? "TRUE" : "FALSE");
     printf("[ENCRYPT-DEBUG] AProfile_ready: %s\n", AProfile_ready(self) ? "TRUE" : "FALSE");
+    printf("[ENCRYPT-DEBUG] State: %d (0=IDLE, 1=ASSOC_SENT, 2=ASSOC_RCVD, 3=UPDATE_SENT, 4=UPDATE_RCVD, 5=SESSION_SENT, 6=SESSION_RCVD, 7=ESTABLISHED)\n", self->state);
+    printf("[ENCRYPT-DEBUG] DSQ_local (before increment): %u\n", self->DSQ_local);
+    printf("[ENCRYPT-DEBUG] isControllingStation: %s\n", self->isControllingStation ? "TRUE (using K_SC)" : "FALSE (using K_SM)");
     
     if (!self->security_active || !AProfile_ready(self)) {
         printf("[ENCRYPT-DEBUG] Skipping encryption - security not active/ready\n");
+        printf("\n");
         return true; /* Do nothing if security is not active */
     }
     
@@ -330,6 +335,18 @@ AProfile_wrapOutAsdu(AProfileContext self, T104Frame frame)
     uint8_t* asdu_buffer = frame_buffer + 6;
     int frame_size = Frame_getMsgSize(genericFrame);
     int asdu_len = frame_size - 6;
+
+    printf("\n[PAYLOAD-PRE] ----- PLAINTEXT ASDU (BEFORE ENCRYPTION) -----\n");
+    printf("[PAYLOAD-PRE] ASDU Length: %d bytes\n", asdu_len);
+    printf("[PAYLOAD-PRE] ASDU Type: %d\n", asdu_buffer[0]);
+    printf("[PAYLOAD-PRE] VSQ: %d\n", asdu_buffer[1]);
+    printf("[PAYLOAD-PRE] COT: %d\n", asdu_buffer[2]);
+    printf("[PAYLOAD-PRE] Full ASDU hex dump:\n[PAYLOAD-PRE] ");
+    for (int i = 0; i < asdu_len; i++) {
+        printf("%02X ", asdu_buffer[i]);
+        if ((i + 1) % 16 == 0 && i < asdu_len - 1) printf("\n[PAYLOAD-PRE] ");
+    }
+    printf("\n[PAYLOAD-PRE] ----- END PLAINTEXT ASDU -----\n\n");
 
     /* Save original ASDU for encryption */
     uint8_t* original_asdu = (uint8_t*)GLOBAL_MALLOC(asdu_len);
@@ -351,6 +368,15 @@ AProfile_wrapOutAsdu(AProfileContext self, T104Frame frame)
     nonce[2] = (uint8_t)((self->DSQ_local >> 16) & 0xFF);
     nonce[3] = (uint8_t)((self->DSQ_local >> 24) & 0xFF);
     /* Remaining 8 bytes are zero (fixed padding per standard) */
+    
+    printf("[CRYPTO-PARAMS] ----- AES-256-GCM PARAMETERS -----\n");
+    printf("[CRYPTO-PARAMS] Nonce (12 bytes): ");
+    for (int i = 0; i < 12; i++) printf("%02X ", nonce[i]);
+    printf("\n[CRYPTO-PARAMS] DSQ (little-endian): %u (0x%08X)\n", self->DSQ_local, self->DSQ_local);
+    printf("[CRYPTO-PARAMS] Session Key (%s): ", self->isControllingStation ? "K_SC" : "K_SM");
+    const uint8_t* session_key = self->isControllingStation ? self->K_SC : self->K_SM;
+    for (int i = 0; i < 32; i++) printf("%02X ", session_key[i]);
+    printf("\n[CRYPTO-PARAMS] ----- END AES-256-GCM PARAMETERS -----\n\n");
 
     uint8_t tag[16];
     uint8_t* ciphertext = (uint8_t*)GLOBAL_MALLOC(asdu_len);
@@ -363,18 +389,24 @@ AProfile_wrapOutAsdu(AProfileContext self, T104Frame frame)
      * Controlling station uses K_SC for sending (control direction)
      * Controlled station uses K_SM for sending (monitor direction)
      */
-    const uint8_t* session_key = self->isControllingStation ? self->K_SC : self->K_SM;
+    const uint8_t* session_key_ptr = self->isControllingStation ? self->K_SC : self->K_SM;
     
     /* Reinitialize GCM context with correct key for this direction */
     mbedtls_gcm_context gcm_temp;
     mbedtls_gcm_init(&gcm_temp);
-    int ret = mbedtls_gcm_setkey(&gcm_temp, MBEDTLS_CIPHER_ID_AES, session_key, 256);
+    int ret = mbedtls_gcm_setkey(&gcm_temp, MBEDTLS_CIPHER_ID_AES, session_key_ptr, 256);
     if (ret != 0) {
+        printf("[CRYPTO-ERROR] Failed to set GCM key: -0x%04X\n", -ret);
         mbedtls_gcm_free(&gcm_temp);
         GLOBAL_FREEMEM(original_asdu);
         GLOBAL_FREEMEM(ciphertext);
         return false;
     }
+    
+    printf("[CRYPTO-EXEC] Executing AES-256-GCM encryption...\n");
+    printf("[CRYPTO-EXEC] Input length: %d bytes\n", asdu_len);
+    printf("[CRYPTO-EXEC] Nonce length: 12 bytes\n");
+    printf("[CRYPTO-EXEC] Tag length: 16 bytes\n");
     
     /* Encrypt ASDU using AES-256-GCM (IEC 62351-5:2023 Clause 8.5.2.2) */
     ret = mbedtls_gcm_crypt_and_tag(&gcm_temp, MBEDTLS_GCM_ENCRYPT, 
@@ -382,12 +414,26 @@ AProfile_wrapOutAsdu(AProfileContext self, T104Frame frame)
                                     original_asdu, ciphertext, 16, tag);
     mbedtls_gcm_free(&gcm_temp);
     
-    GLOBAL_FREEMEM(original_asdu);
-    
     if (ret != 0) {
+        printf("[CRYPTO-ERROR] Encryption failed: -0x%04X\n", -ret);
+        GLOBAL_FREEMEM(original_asdu);
         GLOBAL_FREEMEM(ciphertext);
         return false;
     }
+    
+    printf("[CRYPTO-EXEC] Encryption successful\n\n");
+    
+    printf("[PAYLOAD-POST] ----- ENCRYPTED OUTPUT -----\n");
+    printf("[PAYLOAD-POST] Authentication Tag (16 bytes): ");
+    for (int i = 0; i < 16; i++) printf("%02X ", tag[i]);
+    printf("\n[PAYLOAD-POST] Ciphertext (%d bytes):\n[PAYLOAD-POST] ", asdu_len);
+    for (int i = 0; i < asdu_len; i++) {
+        printf("%02X ", ciphertext[i]);
+        if ((i + 1) % 16 == 0 && i < asdu_len - 1) printf("\n[PAYLOAD-POST] ");
+    }
+    printf("\n[PAYLOAD-POST] ----- END ENCRYPTED OUTPUT -----\n\n");
+    
+    GLOBAL_FREEMEM(original_asdu);
 
     /* Reset frame and rebuild with encrypted ASDU */
     Frame_resetFrame(genericFrame);
@@ -419,6 +465,14 @@ AProfile_wrapOutAsdu(AProfileContext self, T104Frame frame)
     
     /* IEC 62351-5:2023 Clause 8.5.2.2.4: Increment DSQ after encryption */
     self->DSQ_local++;
+    
+    printf("[ENCRYPT-RESULT] ----- ENCRYPTION COMPLETE -----\n");
+    printf("[ENCRYPT-RESULT] New ASDU Type: %d (S_SE_NA_1 - Encrypted wrapper)\n", S_SE_NA_1);
+    printf("[ENCRYPT-RESULT] New ASDU Length: %d bytes (header:9 + nonce:12 + tag:16 + ciphertext:%d)\n", 
+           9 + 12 + 16 + asdu_len, asdu_len);
+    printf("[ENCRYPT-RESULT] DSQ incremented to: %u\n", self->DSQ_local);
+    printf("[ENCRYPT-RESULT] Ready for transmission\n");
+    printf("\n");
 
     return true;
 #else
@@ -617,6 +671,20 @@ AProfile_handleInPdu(AProfileContext self, const uint8_t* in, int inSize, const 
                    ((uint32_t)nonce[2] << 16) | 
                    ((uint32_t)nonce[3] << 24);
 
+    /* Debug: Show encrypted input prior to decryption */
+    printf("\n[DECRYPT-PRE] ----- ENCRYPTED INPUT RECEIVED -----\n");
+    printf("[DECRYPT-PRE] Nonce (12 bytes): ");
+    for (int i = 0; i < 12; i++) printf("%02X ", nonce[i]);
+    printf("\n[DECRYPT-PRE] DSQ (little-endian): %u (0x%08X)\n", received_dsq, received_dsq);
+    printf("[DECRYPT-PRE] Authentication Tag (16 bytes): ");
+    for (int i = 0; i < 16; i++) printf("%02X ", tag[i]);
+    printf("\n[DECRYPT-PRE] Ciphertext (%d bytes):\n[DECRYPT-PRE] ", ciphertext_len);
+    for (int i = 0; i < ciphertext_len; i++) {
+        printf("%02X ", ciphertext[i]);
+        if ((i + 1) % 16 == 0 && i < ciphertext_len - 1) printf("\n[DECRYPT-PRE] ");
+    }
+    printf("\n[DECRYPT-PRE] ----- END ENCRYPTED INPUT -----\n\n");
+
     /* Verify DSQ to prevent replay attacks - IEC 62351-5:2023 Clause 8.5.2.2.4 */
     /* Note: DSQ_remote starts at 0, first message should have DSQ=1 */
     if (self->DSQ_remote != 0 && received_dsq <= self->DSQ_remote) {
@@ -648,6 +716,9 @@ AProfile_handleInPdu(AProfileContext self, const uint8_t* in, int inSize, const 
      * Controlled station receives on control direction (uses K_SC)
      */
     const uint8_t* session_key = self->isControllingStation ? self->K_SM : self->K_SC;
+    printf("[DECRYPT-PARAMS] Session Key (%s): ", self->isControllingStation ? "K_SM" : "K_SC");
+    for (int i = 0; i < 32; i++) printf("%02X ", session_key[i]);
+    printf("\n");
     
     /* Reinitialize GCM context with correct key for this direction */
     mbedtls_gcm_context gcm_temp;
@@ -663,6 +734,10 @@ AProfile_handleInPdu(AProfileContext self, const uint8_t* in, int inSize, const 
     }
     
     /* Decrypt and authenticate using AES-256-GCM - IEC 62351-5:2023 Clause 8.5.2.2 */
+    printf("[DECRYPT-EXEC] Executing AES-256-GCM decryption...\n");
+    printf("[DECRYPT-EXEC] Input length: %d bytes\n", ciphertext_len);
+    printf("[DECRYPT-EXEC] Nonce length: 12 bytes\n");
+    printf("[DECRYPT-EXEC] Tag length: 16 bytes\n");
     int dec_ret = mbedtls_gcm_auth_decrypt(&gcm_temp, ciphertext_len, 
                                            nonce, 12, NULL, 0, 
                                            tag, 16, ciphertext, (uint8_t*)*out);
@@ -679,6 +754,23 @@ AProfile_handleInPdu(AProfileContext self, const uint8_t* in, int inSize, const 
 
     /* IEC 62351-5:2023 Clause 8.5.2.2.4: Update DSQ after successful decryption */
     self->DSQ_remote = received_dsq;
+    
+    /* Debug: Show decrypted plaintext ASDU */
+    printf("[DECRYPT-POST] ----- PLAINTEXT ASDU (AFTER DECRYPTION) -----\n");
+    const uint8_t* plaintext = *out;
+    int plaintext_len = *outSize;
+    printf("[DECRYPT-POST] ASDU Length: %d bytes\n", plaintext_len);
+    if (plaintext_len >= 3) {
+        printf("[DECRYPT-POST] ASDU Type: %d\n", plaintext[0]);
+        printf("[DECRYPT-POST] VSQ: %d\n", plaintext[1]);
+        printf("[DECRYPT-POST] COT: %d\n", plaintext[2]);
+    }
+    printf("[DECRYPT-POST] Full ASDU hex dump:\n[DECRYPT-POST] ");
+    for (int i = 0; i < plaintext_len; i++) {
+        printf("%02X ", plaintext[i]);
+        if ((i + 1) % 16 == 0 && i < plaintext_len - 1) printf("\n[DECRYPT-POST] ");
+    }
+    printf("\n[DECRYPT-POST] ----- END PLAINTEXT ASDU -----\n\n");
     
     return APROFILE_SECURE_DATA;
 #else
